@@ -1,0 +1,234 @@
+---
+title: "Neurotyping Analysis"
+author: "Kenny Miller"
+date: "5/5/2021"
+output:
+  pdf_document: default
+  html_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/MSBA/UT AD Work/Neurotyping")
+load("~/MSBA/UT AD Work/Neurotyping/neurotyping function.RData")
+results <- read.csv("neurotyping_test.csv")
+questions <- readxl::read_xlsx("Neurotyping Overall.xlsx")
+results2 <- results[,-c(1:3)]
+soccer_results <- read.csv("Neurotyping Test (Responses) - Form Responses 1.csv")
+```
+
+**This file includes the code and necessary functions to complete the neurotype analysis as requested by our team. All code is proprietary and not to be shared without the written consent of the author.**
+
+
+## Matrix Assignment
+
+```{r matrix creation, include=FALSE}
+colnames(questions)[10:14] <- c("x5","x3","x1","x3","x5")
+colnames(results2)[1]
+q1 <- as.matrix(questions[2:6,10:14]); colnames(q1) <- 1:5; q1
+colnames(results2)[2]
+q2 <- as.matrix(questions[2:6,10:14]); colnames(q2) <- 1:5; q2
+colnames(results2)[3]
+q3 <- as.matrix(questions[7:11,10:14]); colnames(q3) <- 1:5; q3
+colnames(results2)[4]
+q4 <- as.matrix(questions[12:16,10:14]); colnames(q4) <- 1:5; q4
+colnames(results2)[5]
+q5 <- as.matrix(questions[17:11,10:14]); colnames(q5) <- 1:5; q5
+colnames(results2)[6]
+q6 <- as.matrix(questions[22:26,10:14]); colnames(q6) <- 1:5; q6
+colnames(results2)[7]
+q7 <- as.matrix(questions[22:26,10:14]); colnames(q7) <- 1:5; q7
+colnames(results2)[8]
+q8 <- as.matrix(questions[27:31,10:14]); colnames(q8) <- 1:5; q8
+colnames(results2)[9]
+q9 <- as.matrix(questions[27:31,10:14]); colnames(q9) <- 1:5; q9
+colnames(results2)[10]
+q10 <- as.matrix(questions[32:36,10:14]); colnames(q10) <- 1:5; q10
+colnames(results2)[11]
+q11 <- as.matrix(questions[37:41,10:14]); colnames(q11) <- 1:5; q11
+colnames(results2)[12]
+q12 <- as.matrix(questions[42:46,10:14]); colnames(q12) <- 1:5; q12
+colnames(results2)[13]
+q13 <- as.matrix(questions[42:46,10:14]); colnames(q13) <- 1:5; q13
+colnames(results2)[14]
+q14 <- as.matrix(questions[47:51,10:14]); colnames(q14) <- 1:5; q14
+colnames(results2)[15]
+q15 <- as.matrix(questions[47:51,10:14]); colnames(q15) <- 1:5; q15
+colnames(results2)[16]
+q16 <- as.matrix(questions[52:56,10:14]); colnames(q16) <- 1:5; q16
+colnames(results2)[17]
+q17 <- as.matrix(questions[57:61,10:14]); colnames(q17) <- 1:5; q17
+colnames(results2)[18]
+q18 <- as.matrix(questions[62:66,10:14]); colnames(q18) <- 1:5; q18
+colnames(results2)[19]
+q19 <- as.matrix(questions[67:71,10:14]); colnames(q19) <- 1:5; q19
+colnames(results2)[20]
+q20 <- as.matrix(questions[72:76,10:14]); colnames(q20) <- 1:5; q20
+colnames(results2)[21]
+q21 <- as.matrix(questions[77:81,10:14]); colnames(q21) <- 1:5; q21
+colnames(results2)[22]
+q22 <- as.matrix(questions[82:86,10:14]); colnames(q22) <- 1:5; q22
+colnames(results2)[23]
+q23 <- as.matrix(questions[92:96,10:14]); colnames(q23) <- 1:5; q23
+colnames(results2)[24]
+q24 <- as.matrix(questions[97:101,10:14]); colnames(q24) <- 1:5; q24
+colnames(results2)[25]
+q25 <- as.matrix(questions[102:106,10:14]); colnames(q25) <- 1:5; q25
+colnames(results2)[26]
+q26 <- as.matrix(questions[107:111,10:14]); colnames(q26) <- 1:5; q26
+colnames(results2)[27]
+q27 <- as.matrix(questions[112:116,10:14]); colnames(q27) <- 1:5; q27
+colnames(results2)[28]
+q28 <- as.matrix(questions[117:121,10:14]); colnames(q28) <- 1:5; q28
+colnames(results2)[29]
+q29 <- as.matrix(questions[122:126,10:14]); colnames(q29) <- 1:5; q29
+colnames(results2)[30]
+q30 <- as.matrix(questions[122:126,10:14]); colnames(q30) <- 1:5; q30
+colnames(results2)[31]
+q31 <- as.matrix(questions[127:131,10:14]); colnames(q31) <- 1:5; q31
+colnames(results2)[32]
+q32 <- as.matrix(questions[132:136,10:14]); colnames(q32) <- 1:5; q32
+colnames(results2)[33]
+q33 <- as.matrix(questions[137:141,10:14]); colnames(q33) <- 1:5; q33
+colnames(results2)[34]
+q34 <- as.matrix(questions[142:146,10:14]); colnames(q34) <- 1:5; q34
+colnames(results2)[35]
+q35 <- as.matrix(questions[147:151,10:14]); colnames(q35) <- 1:5; q35
+colnames(results2)[36]
+q36 <- as.matrix(questions[152:156,10:14]); colnames(q36) <- 1:5; q36
+colnames(results2)[37]
+q37 <- as.matrix(questions[157:161,10:14]); colnames(q37) <- 1:5; q37
+colnames(results2)[38]
+q38 <- as.matrix(questions[157:161,10:14]); colnames(q38) <- 1:5; q38
+colnames(results2)[39]
+q39 <- as.matrix(questions[162:166,10:14]); colnames(q39) <- 1:5; q39
+colnames(results2)[40]
+q40 <- as.matrix(questions[162:166,10:14]); colnames(q40) <- 1:5; q40
+colnames(results2)[41]
+q41 <- as.matrix(questions[167:171,10:14]); colnames(q41) <- 1:5; q41
+colnames(results2)[42]
+q42 <- as.matrix(questions[167:171,10:14]); colnames(q42) <- 1:5; q42
+colnames(results2)[43]
+q43 <- as.matrix(questions[172:176,10:14]); colnames(q43) <- 1:5; q43
+colnames(results2)[44]
+q44 <- as.matrix(questions[172:176,10:14]); colnames(q44) <- 1:5; q44
+colnames(results2)[45]
+q45 <- as.matrix(questions[177:181,10:14]); colnames(q45) <- 1:5; q45
+colnames(results2)[46]
+q46 <- as.matrix(questions[182:186,10:14]); colnames(q46) <- 1:5; q46
+colnames(results2)[47]
+q47 <- as.matrix(questions[187:191,10:14]); colnames(q47) <- 1:5; q47
+colnames(results2)[48]
+q48 <- as.matrix(questions[197:201,10:14]); colnames(q48) <- 1:5; q48
+colnames(results2)[49]
+q49 <- as.matrix(questions[202:206,10:14]); colnames(q49) <- 1:5; q49
+colnames(results2)[50]
+q50 <- as.matrix(questions[207:211,10:14]); colnames(q50) <- 1:5; q50
+colnames(results2)[51]
+q51 <- as.matrix(questions[207:211,10:14]); colnames(q51) <- 1:5; q51
+colnames(results2)[52]
+q52 <- as.matrix(questions[212:216,10:14]); colnames(q52) <- 1:5; q52
+colnames(results2)[53]
+q53 <- as.matrix(questions[217:221,10:14]); colnames(q53) <- 1:5; q53
+colnames(results2)[54]
+q54 <- as.matrix(questions[222:226,10:14]); colnames(q54) <- 1:5; q54
+colnames(results2)[55]
+q55 <- as.matrix(questions[227:231,10:14]); colnames(q55) <- 1:5; q55
+colnames(results2)[56]
+q56 <- as.matrix(questions[232:236,10:14]); colnames(q56) <- 1:5; q56
+colnames(results2)[57]
+q57 <- as.matrix(questions[242:246,10:14]); colnames(q57) <- 1:5; q57
+colnames(results2)[58]
+q58 <- as.matrix(questions[247:251,10:14]); colnames(q58) <- 1:5; q58
+colnames(results2)[59]
+q59 <- as.matrix(questions[252:256,10:14]); colnames(q59) <- 1:5; q59
+colnames(results2)[60]
+q60 <- as.matrix(questions[252:256,10:14]); colnames(q60) <- 1:5; q60
+colnames(results2)[61]
+q61 <- as.matrix(questions[87:91,10:14]); colnames(q61) <- 1:5; q61
+colnames(results2)[62]
+q62 <- as.matrix(questions[192:196,10:14]); colnames(q62) <- 1:5; q62
+colnames(results2)[63]
+q63 <- as.matrix(questions[212:216,10:14]); colnames(q63) <- 1:5; q63
+colnames(results2)[64]
+q64 <- as.matrix(questions[237:241,10:14]); colnames(q64) <- 1:5; q64
+```
+
+## Answers Data Frame Creation
+
+```{r answers creation}
+types <- data.frame("1.0"=rep(0,64),"0.8"=rep(0,64),"0.6"=rep(0,64),"0.4"=rep(0,64),"0.2"=rep(0,64))
+colnames(types) <- c("1.0","0.8","0.6","0.4","0.2")
+head(types)
+```
+
+## Test Answers
+
+```{r testing}
+m <- as.numeric(results[2,-c(1:3)])
+
+for (i in 1:64) {
+  temp <- get(paste("q",i,sep=""))
+  types[i,] <- temp[,colnames(temp) == m[i]]
+}
+neuro <- data.frame("player"=rep(0,1),"type1a"=rep(0,1),"type1b"=rep(0,1),"type2a"=rep(0,1),
+                    "type2b"=rep(0,1),"type3"=rep(0,1))
+nt <- c("1a","1b","2a","2b","3")
+for (i in 1:5) {
+  neuro[1,i+1] <- sum(length(which(types$`1.0` == nt[i]))*1,length(which(types$`0.8` == nt[i]))*0.8,
+                      length(which(types$`0.6` == nt[i]))*0.6,length(which(types$`0.4` == nt[i]))*0.4,
+                      length(which(types$`0.2` == nt[i]))*.2)
+}
+neuro
+```
+
+## Create Function
+
+```{r function}
+player <- results[1,]
+neuro[1,1] <- player[2]
+
+neuro_types <- function(a) {
+  types <- data.frame("1.0"=rep(0,64),"0.8"=rep(0,64),"0.6"=rep(0,64),"0.4"=rep(0,64),"0.2"=rep(0,64))
+  colnames(types) <- c("1.0","0.8","0.6","0.4","0.2")
+  total <- nrow(a)
+  neuro <- data.frame("player"=rep(0,total),"type1a"=rep(0,total),"type1b"=rep(0,total),
+                      "type2a"=rep(0,total),"type2b"=rep(0,total),"type3"=rep(0,total))
+  for (i in 1:total) {
+    athlete <- a[i,]
+    neuro[i,1] <- athlete[2]
+    player <- as.numeric(athlete[,-c(1:3)])
+    for (j in 1:64) {
+      temp <- get(paste("q",j,sep=""))
+      types[j,] <- temp[,colnames(temp) == player[j]]
+    }
+    nt <- c("1a","1b","2a","2b","3")
+    for (k in 1:5) {
+      neuro[i,k+1] <- sum(length(which(types$`1.0` == nt[k]))*1,length(which(types$`0.8` == nt[k]))*0.8,
+                          length(which(types$`0.6` == nt[k]))*0.6,length(which(types$`0.4` == nt[k]))*0.4,
+                          length(which(types$`0.2` == nt[k]))*0.2)
+    }
+  }
+  return(neuro)
+}
+```
+
+## Function Test and Run with Team Results
+
+```{r run with test data}
+suppressWarnings(neuro_types(results)[,2:6])
+```
+
+Here we see that the largest result of the row is the primary neurotype of our athlete, followed by the second largest, ans so on.
+
+```{r run with team data, include=FALSE}
+NeuroTypes <- suppressWarnings(neuro_types(soccer_results))
+soccer <- NeuroTypes[-c(1:4,23,28,29),]
+write.csv(soccer, "neurotypes_soccer.csv", row.names = F)
+save.image("~/MSBA/UT AD Work/Neurotyping/neurotyping function.RData")
+```
+
+
+
