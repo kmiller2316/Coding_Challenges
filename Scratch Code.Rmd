@@ -1,0 +1,101 @@
+---
+title: "Rays Questionnaire"
+author: "Kenny Miller"
+date: "2/2/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Rays Questionnaire
+
+# Question 1
+
+Pip the probabilistic equipment manager has decided to randomly assign uniform numbers to each of the 26 players on the roster for the upcoming season.  However, after assigning the numbers, Pip realized he forgot to generate the numbers without replacement (e.g. when he assigns #17, he doesn't take #17 out of the pool of possible numbers for the next uniform)!
+
+What is the probability that at least one uniform number was handed out to 3 or more players?  Assume that permissible uniform numbers range from 0 to 99, and each number in that range was equally likely to have been chosen.
+
+```{r Pip}
+trials <- 100000
+multiples <- 0
+
+set.seed(23); for (i in 1:trials) {
+  uniforms <- data.frame(Number = sample(c(0:99), size = 26, replace = TRUE),other_col = "uni")
+  uniforms <- as.data.frame((table(uniforms$Number)))
+  for (j in 1:nrow(uniforms)) {
+    if( uniforms$Freq[j] >= 3 ) { multiples <- multiples + 1 }
+  }
+}
+multiples/trials # @ 100,000 : 0.22015; @ 1,000,000 : 0.218642
+Q1 <- round((multiples/trials)*100,0)
+Q1 # 22%
+```
+
+# Question 2
+
+Stan the stochastic southpaw has a pitching algorithm that never changes.
+
+* In the first pitch of each plate appearance, he throws a fastball 70% of the time (and therefore, an off-speed pitch 30% of the time).
+* The following pitch selection is determined *only* by the type of pitch immediately preceding it.
+  * If the previous pitch was off-speed, he will throw a fastball 75% of the time and an off-speed pitch 25% of the time.
+  * If the previous pitch was a fastball, he will throw either a fastball or off-speed pitch with 50% probability.
+  
+In your excitement to see Stan pitch, you spilled your soda in the concourse and missed the first two pitches of his first plate appearance of the game. You are able to see that his third pitch is a fastball. Given this information, what is the probability that the first pitch was an off-speed pitch?
+
+```{r Stan}
+plate_appearances <- 100000
+fp_os <- 0
+# third_pitch must be a fastball
+
+set.seed(23); for (i in 1:plate_appearances) {
+  first_pitch <- sample(c("FB","OS"), size = 1, prob = c(0.70,0.30))
+  if(first_pitch == "FB") {second_pitch <- sample(c("FB","OS"), size = 1, prob = c(0.50,0.50))} else {second_pitch <- sample(c("FB","OS"), size = 1, prob = c(0.75,0.25))}
+  if(second_pitch == "FB") {third_pitch <- sample(c("FB","OS"), size = 1, prob = c(0.50,0.50))} else {third_pitch <- sample(c("FB","OS"), size = 1, prob = c(0.75,0.25))}
+  if(first_pitch == "OS" & third_pitch == "FB") { fp_os <- fp_os + 1 }
+}
+fp_os/plate_appearances # @ 100,000 : 0.16793; @ 1,000,000 : 0.168549
+Q2 <- round((fp_os/plate_appearances)*100,0)
+Q2 # 17%
+```
+
+# Question 3
+
+Suppose that in our league, half of MLB batters have a “true talent” (stable given an infinitely large sample) on-base percentage (“OBP” or the probability that a batter gets on base in a plate appearance) of .310 and the other half have a true-talent on-base percentage of .360.
+
+In scanning the season-to-date batting statistics, you see that Billy Bases has gotten on base 36 times in 100 plate appearances. Without any additional information about Billy’s performance so far this season, what is the probability that his “true-talent” OBP matches his current OBP of .360?
+
+```{r Billy}
+sims <- 100000
+true_talent <- 0
+
+set.seed(23); for (i in 1:sims) {
+  billy <- data.frame(on_base = sample(c("ON","NOB"), size = 100, replace = T, prob = c(0.360,0.640)), other_var = "Billy") # assuming true talent on-base to be .360 in this sample
+  billy <- as.data.frame(table(billy$on_base))
+  if(billy$Freq[2] == 36) {true_talent <- true_talent + 1}
+}
+true_talent/sims # @ 100,000 : 0.08209; @ 1,000,000 : 0.082957
+Q3 <- round((true_talent/sims)*100,0)
+Q3 # 8
+```
+
+# Question 4
+
+Suppose "true-talent" (stable given an infinitely large sample) average exit velocity (AEV) on batted balls for all players is normally distributed with a mean of 87 mph and a standard deviation of 2.5 mph.
+
+For any sample of individual batted balls hit by one player, the standard deviation of exit velocity of those batted balls around this particular player's true-talent AEV is 9 mph.
+
+At this point in the season, Marco Masher has a total of 10 batted balls with an average exit velocity of 96 mph. Given only this information, the best estimate for his "true talent" exit velocity is closest to which whole number?
+
+```{r Marco}
+# original distribution N(87,2.5)
+# Marco distribution N(?,9)
+
+marco_true <- ((10*(1/9^2)*96) + ((1/2.5^2)*87)) / ((10*(1/9^2)) + (1/2.5^2))
+Q4 <- round(marco_true,0)
+Q4 # 91
+```
+
