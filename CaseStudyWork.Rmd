@@ -1,0 +1,263 @@
+---
+title: "Hit Classification Case Study"
+author: "Kenny Miller"
+date: "4/5/2021"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, out.width = "50%", out.height = "50%")
+setwd("~/MSBA/Summer Internship 2021 Applications/Rapsodo Data Analytics Intern/Case_Study_Work")
+hits <- read.csv("caseStudyData.csv")
+```
+
+******
+## Summary
+*****
+
+I was tasked with developing a new classification approach for batted balls using more than just launch angle, which is the current Rapsodo approach. The model I developed is a support vector machine that uses interactions between the exit speed, distance, direction, and playing level variables. This model had an accuracy of 81.4% on the holdout data during model training and accurately classified hit types at an 81% clip when compared to the previous system's classifications.
+
+**Cleaning**
+
+* Verified there were no missing values in the data
+* Checked distributions/representations of all 6 variables to ensure they would be appropriate for modeling
+* Removed 11,244 rows where exitSpeed was 0 because it does not make sense a batted ball would leave the bat at 0 m/s (this also removed the rows where 0 was the only value in the launchAngle, direction, and distance variables). This appeared to be a potential calibration/recording error in the system used to record the data
+* Double-checked distributions again to ensure the removal of rows did not require new transformations; all variables were normally or uniformly distributed and good to use in model development
+* Adjusted the hitClass variable to a factor in order to run classification modeling
+* Split the data into training and holdout samples; using a simple random sample of 80% of the total rows
+
+**Model Development**
+
+* Started with a classic decision tree model to predict hitClass
+* Decision Tree did well at classifying the hit class but stepped up to a naive Bayes model to see if there were improvements
+* Finally tested a support vector machine (SVM) model both with and without interactions
+* The SVM model with interactions was the best choice for classifying this data
+* Using the full data frame to make predictions/classifications, the SVM model does a good job to predict most hit types but struggles with popups
+* Interactions greatly improved the model, as we could control for the variations in the exit speed across the playing levels
+
+**Conclusions**
+
+During this case, I utilized multiple models to try and identify a new way to classify batted ball hit classes. The best model for classifying the data was a support vector machine that included interactions between the variables in the model. Since launch angle perfectly predicted hit class, it needed to be excluded from the model development.
+
+**Future Recommendations**
+
+* Recording hit class by eye/user input, instead of using the current launch angle system, in order to better compare how a new system/model compares in classifying hit types to the current Rapsodo approach
+* Develop additional models that include launch angle to help classify hits but are not able to explain it perfectly
+
+*****
+## Data Cleaning
+*****
+
+* Let's check the hitClass variable first:
+
+```{r hitClass Review}
+summary(hits)
+barplot(table(hits$hitClass))
+table(hits$hitClass)
+```
+
+*Review:* We see a disproportional amount of ground balls in comparison to the remaining hit classes but this may not be a major issue. Could be an opportunity to review these hits and see if there is an opportunity to add/adjust our hit type buckets. Also, there are not many popups but this most likely isn't an issue
+
+
+* Now let's check the exitSpeed variable:
+
+```{r exitSpeed Review}
+hist(hits$exitSpeed)
+summary(hits$exitSpeed)
+summary(hits[which(hits$exitSpeed == 0),]) # let's check what all the 0 values are
+```
+
+*Review:* There are a ton of 0 or near 0 values here, not entirely sure why this is the case. Have there been errors in the calculations/calibration of the data? Outside of the early values where we see a lot of 0 values the data appears to follow a normal distribution well enough that we don't need to worry much about it, but let's continue to explore why there are so many near 0s. It looks like these values are all 0 across the board in every category (this could also explain the large number of ground balls because they are all labeled as grounders), and the system calibration could have been off or there were errors; potentially we need to remove these rows.
+
+
+* Time to review launchAngle variable:
+
+```{r launchAngle Review}
+hist(hits$launchAngle)
+summary(hits$launchAngle)
+summary(hits[which(hits$launchAngle == 0),]) # let's check what all the 0 values are
+```
+
+*Review:* Again there are a ton of near 0 values but this most likely is the same line of thinking as with the exitSpeed variable. Variable distribution looks super outside of those 0 values. 
+
+
+* Review of direction variable:
+
+```{r direction Review}
+hist(hits$direction)
+summary(hits$direction)
+```
+
+*Review:* The direction variable looks good probably want to adjust or remove those 0 values similar to the exitSpeed variable.
+
+
+* Review of the distance variable:
+
+```{r distance Review}
+hist(hits$distance)
+summary(hits$distance)
+summary(hits[which(hits$distance == 0),]) # let's check what all the 0 values are
+```
+
+*Review:* The distance variable appears to follow a more uniform distribution, which isn't an issue at all, other than that major spike near 0, let's review that. Again all of the 0 values are when each variable is 0 across the board, I'll most likely want to remove these rows.
+
+
+* Review of the playingLevel variable:
+
+```{r playingLevel Review}
+barplot(table(hits$playingLevel))
+table(hits$playingLevel)
+```
+
+*Review:* Looks like a good enough distribution of the levels, we can double check after the final adjustments.
+
+**Final Data Cleaning Decisions!**
+
+Since all four hit related variables have no variation from 0 when one of them is 0, I will remove these 11,000 + rows because it does not make sense to include rows where we say a batted ball had exitSpeed of 0 m/s.
+
+```{r Data Cleaning Final}
+# hits.original <- hits
+nrow(hits[which(hits$exitSpeed == 0),])/nrow(hits) 
+# 26.5% is a large proportion of data to remove but is necessary
+hits <- hits[-which(hits$exitSpeed == 0),]
+hits$hitClass <- as.factor(hits$hitClass) # adjust hitClass to a factor in order to predict levels
+# leave playing level as an integer to see how that predicts, may adjust to factor later
+hits$oldPredicted <- ifelse(hits$launchAngle < 0, 1, 
+                        ifelse(hits$launchAngle >= 0 & hits$launchAngle < 6, 2,
+                           ifelse(hits$launchAngle >= 6 & hits$launchAngle < 15, 3,
+                              ifelse(hits$launchAngle >= 15 & hits$launchAngle < 24, 4,
+                                 ifelse(hits$launchAngle >= 24 & hits$launchAngle < 50, 5, 6)))))
+hits$oldPredicted <- as.factor(hits$oldPredicted)
+# after removing the 0 value rows let's double check the histograms
+hist(hits$exitSpeed);hist(hits$launchAngle);hist(hits$direction);hist(hits$distance)
+# all of the histograms look great with the removal of those rows!
+# need to double check the distributions of Levels and Classes
+table(hits$hitClass);table(hits$playingLevel)
+barplot(table(hits$hitClass)); barplot(table(hits$playingLevel))
+```
+
+*Final Decisions:*
+
+* Remove 11,244 rows that are 0s for every value of exitSpeed, launchAngle, direction, and distance because these appear to be rows where system calibration and recording are inaccurate
+* Make hitClass a factor variable in order to run predictive/classification models 
+* I have decided to leave playingLevel as an integer in the first iteration of modeling instead of changing it to a factor, this may change after reviewing models 
+* Add in column of current system hit classifications to check against new systems and convert to a factor in order to run the check
+* Verify distributions of all predictor variables and verify proper (somewhat equal) representation in all levels of hitClass and playingLevel
+* Everything looks good, let's proceed to model development
+
+*****
+## Model Creation
+*****
+
+After reviewing the data I believe that a decision tree model (or potentially a naive Bayes model) will work best to predict hitClass over the current model using only launchAngle.
+
+```{r library load ins, include=FALSE}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(kernlab)
+```
+
+
+```{r Training and Holdout Creation}
+# check accuracy of the current model
+mean(hits$hitClass == hits$oldPredicted)
+# hitClass is confirmed to be based on the original model/approach by Rapsodo (oldPredicted can 
+# be removed now); I emailed Nicholas to see if there is another way to compare accuracies!
+# since launchAngle will perfectly predicted hitClass, we need to remove it from 
+# any model developments
+hits.analysis <- hits[, c(1,2,4,5,6)]
+set.seed(23); train.rows <- sample(1:nrow(hits.analysis), 0.8*nrow(hits.analysis))
+TRAIN <- hits.analysis[train.rows,]; HOLDOUT <- hits.analysis[-train.rows,]
+```
+
+Decision Tree Model
+```{r Decision Tree Model}
+TREE <- train(hitClass~., data=TRAIN, method="rpart", 
+             trControl=trainControl(method="cv",number=10),
+             tuneGrid=data.frame(cp=seq(from=0.01, to=0.20, by=0.005)),
+             preProc = c("center", "scale"))
+plot(TREE)
+TREE$results[rownames(TREE$bestTune),]
+
+postResample(predict(TREE,newdata=HOLDOUT),HOLDOUT$hitClass)
+
+rtree <- rpart(hitClass~., data=hits.analysis, cp=0.01)
+plot(rtree); text(rtree, digits = 2)
+rpart.plot(rtree, extra = 2)
+```
+
+*Conclusion:* A more complex tree with limited penalty for additional nodes does well in predicting the hitClass for our batters. Let's only explore the complexity parameter down to 0.01. This tree model is relatively accurate on the training and on the holdout data, but let's look at the naive Bayes model.
+
+Naive Bayes Model
+```{r Naive Bayes Model}
+x <- hits.analysis[,c("exitSpeed", "direction", "distance", "playingLevel")]
+y <- hits.analysis$hitClass
+# using same 80% training rows as sampled above
+x.train <- x[train.rows,]
+y.train <- y[train.rows]
+x.test <- x[-train.rows,]
+y.test <- y[-train.rows]
+bayes <- suppressWarnings(train(x.train, y.train, method = "nb",
+                                tuneGrid = data.frame(usekernel=FALSE,fL=0,adjust=1),
+                                trControl = trainControl(method = "cv", number = 10)))
+y.pred <- suppressWarnings(predict(bayes, newdata = x.test))
+table(y.test,y.pred) # confusion matrix
+sum(y.test==y.pred)/length(y.test) # prediction accuracy is 0.6661845
+```
+
+*Conclusion:* It appears we do not predict well using the naive Bayes approach, let's see if an SVM model with and without interactions works better than this or the tree.
+
+Support Vector Machine Model
+```{r Support Vector Machine}
+svmFit<-train(hitClass~.,data=TRAIN,method="svmLinear",trControl=trainControl(method="cv",number=10))
+svmFit # accuracy on training data is 0.8073696
+pred <- predict(svmFit, newdata = HOLDOUT)
+table(HOLDOUT$hitClass, pred) # confusion matrix
+sum(HOLDOUT$hitClass == pred)/nrow(HOLDOUT) # prediction accuracy is 0.8100289; we see improvement
+# let's try with interactions
+svmFit2<-train(hitClass~.^2,data=TRAIN,method="svmLinear",trControl=trainControl(method="cv",number=10))
+svmFit2 # accuracy on training data is 0.8125522; looking good!
+pred2 <- predict(svmFit2, newdata = HOLDOUT)
+table(HOLDOUT$hitClass, pred2) # confusion matrix
+sum(HOLDOUT$hitClass == pred2)/nrow(HOLDOUT) # prediction accuracy is 0.8142077; minor improvement
+```
+
+*Conclusion:* Both versions of the support vector machines seem to struggle most with classifying popups, at least when compared to the current approach, but interactions do improve our predictions. I will use an SVM model with interactions as the final approach.
+
+Final Model
+```{r Final Model Creation}
+# use full data set
+SVM <- train(hitClass~.^2, data = hits.analysis,
+             method = "svmLinear",
+             trControl = trainControl(method = "cv", number = 10))
+hits$newPredicted <- predict(SVM, newdata=hits)
+mean(hits$hitClass == hits$newPredicted) # 0.8133659
+table(hits$hitClass,hits$newPredicted)
+SVM$coefnames
+```
+
+*Conclusion:* The final support vector machine model is used to add a new column to the original "hits" data frame. These are my new predictions and recommendations for classifying hit type. We see interactions are very important to helping classify what type of hit a batted ball is. 
+
+*****
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
