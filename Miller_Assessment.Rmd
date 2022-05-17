@@ -1,0 +1,306 @@
+---
+title: "Yankees Analyst Assessment"
+author: "Kenny Miller"
+date: "3/16/2022"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, out.width = "75%", out.height = "75%")
+library(caret); library(pROC); library(regclass); library(splitstackshape); library(parallel); library(doParallel); library(caretEnsemble); library(nnet); library(neuralnet); library(e1071); library(glmnet); library(gbm); library(pROC)
+setwd("~/MSBA/Full-Time Search/New York Yankees Biomechanics Analyst/NYY Assessment")
+```
+
+******
+## *Question 1*
+******
+
+### *Part A*
+
+```{r coin toss 10}
+binom.test(8,10,p=0.5)
+```
+
+**Response:** I would expect to see 5 heads on the next 10 flips because we have not done enough tests/trials to determine the coin is unfair, and I have no reason to doubt it is not a fair coin. In these 10 flips I do not have evidence to assume that the coin I found is not fair; the binomial test above shows that even though we had 8 heads on the previous 10 flips, we fail to reject the null hypothesis that the probability of heads is different than 50% because it is contained within the confidence interval. 
+
+### *Part B*
+
+```{r coin toss 1000}
+binom.test(800,1000,p=0.5)
+```
+
+**Response:** In completing 1000 trials, I see that 800 heads come up. I would expect to see 800 heads on the next 1000 trials because we have enough evidence, from the binomial test above, to reject the null hypothesis that the probability of heads is 50%, and determine the coin is not fair. After completing the additional 1000 trials, I need to adjust my perception of the coin and it is clearly not fair, with heads coming up about 80% of the time.
+
+******
+## *Question 2*
+******
+
+### *Overview*
+
+Below are the steps I used to generate projections for the average outcome for each batter next season. I used the following steps to create a simulation of plate appearances to generate my projections:
+
+1. Load in the data and check summary for any potential missing information (in this case there is not any). Then check the histogram of the outcome variable to see its distribution, since it is normal I felt comfortable using averages for all previous pitcher/batter interactions regardless of the number of previous matchups.
+
+2. Next I worked on a single simulation for a batter to determine the proper logic to use when building my projection system.
+    + I randomly generated 300 pitchers for the batter to face, assuming the probability of seeing each pitcher was equal.
+    + I aggregated the data by pitcherID to find the average outcome each pitcher had, in case the randomized pitcher matchup had not occurred in the past.
+    + I then subset the historical matchups by batter and aggregate that to find the average outcome in previous matchups with a pitcher.
+    + A data frame of all potential pitcher matchups with this batter is made.
+    + A for loop is then used to loop over all 300 randomly selected matchups, updating a data frame of outcomes in these 300 PAs.
+    + Finally, the average of all 300 outcomes is taken to project the average outcome for this batter next season.
+
+3. The last step in this projection is to run it with all batters!
+    + The aggregated data by pitcherID is generated to ensure no changes from previous
+    + A data frame for projections is made to store final values
+    + A number of trials is set (1,000), this will provide me with multiple iterations of the random 300 matchups which will improve the accuracy of the simulation by helping to get my projections closer to the truth in the long-run (I tried trials at 10,000 but the run time was way too high and the change in the compared projections of 1,000 trials was minimal)
+    + The same logic for a single batter is now applied to all 100 for 1,000 trials.
+
+4. Finally, the projections are reviewed via a summary and a histogram and the results are written to a csv.
+
+```{r matchup data}
+matchup <- read.csv("matchupdata.csv")
+summary(matchup) # no missing values
+hist(matchup$outcome) # since the distribution is normal, I feel comfortable using 
+# averages for pitcher/batter interactions
+```
+
+```{r matchup single batter test}
+batter <- 1
+pitchers_faced <- sample(101:200,300, replace = TRUE) 
+average_pitcher <- aggregate(outcome~pitcherID, data = matchup, FUN=mean)
+# assuming each pitcher is equally likely to be faced
+sub <- subset(matchup, batterID == batter)
+batter_faced <- aggregate(outcome~pitcherID, data = sub, FUN=mean)
+batter_faced <- rbind(batter_faced,
+                      average_pitcher[which(average_pitcher$pitcherID %in% 
+                                              c(setdiff(pitchers_faced, sub$pitcherID))),])
+# average_pitcher[which(average_pitcher$pitcherID %in% c(setdiff(pitchers_faced, sub$pitcherID))),]
+at_bats <- data.frame(pitcher=pitchers_faced, outcome = rep(0,300))
+for (i in 1:nrow(at_bats)) {
+  at_bats$outcome[i] <- batter_faced$outcome[which(batter_faced$pitcherID == at_bats$pitcher[i])]
+}
+mean(at_bats$outcome)
+```
+
+```{r matchup simulation}
+average_pitcher <- aggregate(outcome~pitcherID, data = matchup, FUN=mean) # average pitcher result
+projections <- data.frame(batter_ID=1:100, projected_outcome=rep(0,100))
+trials <- 1000 # increases run time but helps to improve projection accuracy
+set.seed(23); for (j in 1:100) {
+  results <- c()
+  # print(paste("working on batter: ",j))
+  for (k in 1:trials) {
+    pitchers_faced <- sample(101:200,300, replace = TRUE) # simulate pitchers faced
+    sub <- subset(matchup, batterID == j) # utilize previous matchups when available
+    batter_faced <- aggregate(outcome~pitcherID, data = sub, FUN=mean)
+    batter_faced <- rbind(batter_faced,
+                          average_pitcher[which(average_pitcher$pitcherID %in% 
+                                                  c(setdiff(pitchers_faced, sub$pitcherID))),])
+    at_bats <- data.frame(pitcher=pitchers_faced, outcome = rep(0,300))
+    for (i in 1:nrow(at_bats)) { # 300 plate appearances simulation
+      at_bats$outcome[i] <- batter_faced$outcome[which(batter_faced$pitcherID == at_bats$pitcher[i])]
+    }
+    results[k] <- mean(at_bats$outcome)
+  }
+  projections$projected_outcome[j] <- mean(results)
+}
+head(projections)
+summary(projections)
+hist(projections$projected_outcome)
+write.csv(projections, "matchup_projections.csv", row.names = F)
+```
+
+
+******
+## *Question 3*
+******
+### Summary
+
+I was tasked with classifying pitch types based on the pitched ball's trajectories and some of the pitcher's characteristics. The model I developed is a random forest model which is able to accurately predict pitch type at a 93.55% rate on the training data and a 92.27% rate on the holdout data. Most of the models I tested had strong performances but the random forest edged ahead in the end.
+
+**Cleaning**
+
+* Checked the summaries of the Training and Test data and both looked good to go; nothing missing and all reasonable values.
+* Utilizing the make.names function I converted the pitch type column to a character, then factor, that would allow it to be passed to the models properly
+* Checked for near zero or zero variance predictors (none appeared)
+* Checked for highly correlated predictors (none found)
+* Split the training data into train and holdout samples, a 70/30 split respectively
+
+**Model Development**
+
+* Models will be compared using accuracy with 5 fold cross-validation
+* First, I started with a vanilla partition model
+* Stepped up modeling to random forest, boosted tree, k-nearest neighbors, and a single layer neural network. All of these models performed better than the vanilla partition in their accuracies on both the training data and holdout
+* After running through these more advanced models, I wanted to compare them so I used the accuracy metric on the training data and the accuracy standard deviation (SD). Using the one-SD rule to compare models I found that the best model was the neural network (NN) but it also had the largest SD which kept all of the complex models, non-vanilla, in the running.
+* Since the NN and random forest both performed very well and were close in accuracy and Kappa (model success in dealing with potential imbalances in class, pitch type, distributions) measures, I felt comfortable selecting the random forest as the final model due to its quicker run time
+* Finally, predictions were made on the Test data frame using the random forest model, whose parameters were identified in training and the model was fit using all of the Training data frame.
+
+**Conclusions**
+
+In this process I was able to identify many models that could predict pitch type at a 90% or better accuracy. The model I chose to make final pitch type predictions was a random forest model. This model performed very well in classifying pitch types.
+
+```{r classification data}
+TRAIN.Original <- read.csv("pitchclassificationtrain.csv")
+TEST <- read.csv("pitchclassificationtest.csv")
+```
+
+```{r data/variable review}
+DATA <- TRAIN.Original
+summary(DATA) # no missing values, let's go!
+summary(TEST) # no missing values either, let's start model development
+# converting pitch type to factor to better model classification
+DATA <- DATA[,-c(1:3)]
+DATA$type <- as.factor(make.names(DATA$type))
+summary(DATA)
+table(DATA$type)
+
+#Looking for zero variance or near zero variance predictors
+infodensity <- nearZeroVar(DATA, saveMetrics= TRUE)
+infodensity[infodensity$nzv,][1:5,]
+DATA.NOnzv <- DATA[,-nearZeroVar(DATA)]
+# no variables have zero variance or near zero variance
+
+#Explore highly correlated or redundant predictors
+highlycorrelated <- findCorrelation( cor(DATA.NOnzv) , cutoff = .90)
+highlycorrelated
+# no variables to worry about here either! Let's start model building
+```
+
+```{r model development}
+# y = type
+#1) split training data
+set.seed(23); train.rows <- sample(1:nrow(DATA), 0.7*nrow(DATA))
+TRAIN <- DATA[train.rows,]
+HOLDOUT <- DATA[-train.rows,]
+
+#2) Set up how generalization error is to be estimated (5-fold crossvalidation shown here)
+## USing Accuracy
+fitControl <- trainControl(method="cv",number=5, classProbs=TRUE, allowParallel = TRUE)
+
+#3) Fitting models
+# Vanilla Partition
+treeGrid <- expand.grid(cp=10^seq(-5,-1,length=25))
+
+set.seed(23); TREE <- train(type~.,data=TRAIN,method='rpart', tuneGrid=treeGrid,
+                          trControl=fitControl, preProc = c("center", "scale"))
+# TREE  #Look at details of all fits
+plot(TREE) #See how error changes with choices
+TREE$bestTune #Gives best parameters
+# TREE$results #Look at output in more detail (lets you see SDs)
+TREE$results[rownames(TREE$bestTune),] # accuracy: 0.9070044, SD: 0.005983118 
+
+varImp(TREE)
+
+postResample(predict(TREE,newdata=HOLDOUT),HOLDOUT$type) # accuracy: 0.8985915 
+
+# Random Forest
+forestGrid <- expand.grid(mtry=c(1,3,5,11))
+
+cluster <- makeCluster(detectCores() - 1) 
+registerDoParallel(cluster) 
+set.seed(23); FOREST <- train(type~.,data=TRAIN,method='rf',tuneGrid=forestGrid,
+                                        trControl=fitControl, preProc = c("center", "scale"))
+stopCluster(cluster) 
+registerDoSEQ()
+
+# FOREST  
+plot(FOREST) 
+FOREST$bestTune #Gives best parameters
+# FOREST$results #Look at output in more detail (lets you see SDs)
+FOREST$results[rownames(FOREST$bestTune),] # accuracy: 0.9354534, SD: 0.0058972 
+
+varImp(FOREST)
+
+postResample(predict(FOREST,newdata=HOLDOUT),HOLDOUT$type) # accuracy: 0.9226917 
+confusionMatrix(data=predict(FOREST,HOLDOUT),reference=HOLDOUT$type)
+
+# Boosted Tree
+gbmGrid <- expand.grid(n.trees=c(100,200,500),interaction.depth=1:4,shrinkage=c(.01,.001),n.minobsinnode=c(5,10))
+
+cluster <- makeCluster(detectCores() - 1) 
+registerDoParallel(cluster) 
+set.seed(23); GBM <- train(type~.,data=TRAIN, method='gbm',tuneGrid=gbmGrid,verbose=FALSE,
+                    trControl=fitControl, preProc = c("center", "scale"))
+stopCluster(cluster) 
+registerDoSEQ()
+
+# GBM  #Look at details of all fits
+plot(GBM) #See how error changes with choices
+GBM$bestTune #Gives best parameters
+# GBM$results #Look at output in more detail (lets you see SDs)
+GBM$results[rownames(GBM$bestTune),] # accuracy: 0.9304887, SD: 0.006441617 
+# significant run time increase against previous two
+postResample(predict(GBM,newdata=HOLDOUT,n.trees=500),HOLDOUT$type) # accuracy: 0.9242567 
+
+# K-nearest neighbors
+knnGrid <- expand.grid(k=1:50)   
+set.seed(23);  KNN <- train(type~.,data=TRAIN, method='knn', trControl=fitControl,tuneGrid=knnGrid,
+                             preProc = c("center", "scale"))
+
+# KNN  #Look at details of all fits
+plot(KNN) #See how error changes with choices
+KNN$bestTune #Gives best parameters
+# KNN$results #Look at output in more detail (lets you see SDs)
+KNN$results[rownames(KNN$bestTune),] # accuracy: 0.9271343, SD: 0.00581194 
+
+postResample(predict(KNN,newdata=HOLDOUT),HOLDOUT$type) # accuracy: 0.9126761 
+
+# Single layer Neural Net
+nnetGrid <- expand.grid(size=1:6,decay=c(0.1,0.01,0.001,0.0001) ) 
+set.seed(23);  NNET <- train(type~.,data=TRAIN,method='nnet',trControl=fitControl,tuneGrid=nnetGrid,
+              trace=FALSE,linout=FALSE,preProc = c("center", "scale"))
+
+# NNET  #Look at details of all fits
+plot(NNET) #See how error changes with choices
+NNET$bestTune #Gives best parameters
+# NNET$results #Look at output in more detail (lets you see SDs)
+NNET$results[rownames(NNET$bestTune),] # accuracy: 0.9362594 , SD: 0.009229208  
+
+postResample(predict(NNET,newdata=HOLDOUT),HOLDOUT$type) # accuracy: 0.9242567
+confusionMatrix(predict(NNET,newdata=HOLDOUT),HOLDOUT$type)
+```
+
+```{r final model}
+# 4) final model with all training data
+# going to go with a random forest, it had the second best accuracy of the models and was very close 
+# to the best. Run time also factored into this decision
+set.seed(23); FINAL <- train(type~., data=DATA, method="rf",
+                             tuneGrid=expand.grid(mtry=3),
+                             trControl=trainControl(method="none"))
+```
+
+```{r predictions}
+predictions <- predict(FINAL,TEST)
+submit <- data.frame(pitchID=TEST$pitchid,
+                     prediction_type=as.integer(substring(as.character(predictions),2)))
+summary(submit)
+write.csv(submit,"pitch_type_predictions.csv", row.names = FALSE)
+```
+
+
+******
+## *Question 4*
+******
+
+### *Part A*
+
+**Response:** There are several components to be considered before making a recommendation on the sensors. From a data analyst perspective, I would want to know "what will this data actually tell us?", "how will we use it?", and "what is the value of the sensor information?" and we could then compare this with the price of the sensors. I would want to see how well the sensor tracks player movements and captures distance run, speed, and exertion. Specifically, I would like to see how the sensor tracks "ground covered" in order to help us generate a range metric to gauge how well our athletes can "go get a ball." By having this information, I could provide updates and recommendations to player positioning on defense beyond current approaches. Finally, I would want to know if the GPS sensors also can provide us with exertion/biometric measures to help with additional uses such as recovery plans and performance. If I am provided with this information and answers to my questions, I would be comfortable providing a recommendation on whether or not we should purchase the sensors.
+
+### *Part B*
+
+**Response:** *Assuming all of the raw location data includes time stamps* we can calculate the maximum acceleration using the following steps:
+
+1. Using the haversine formula (would utilize r formula and google) I would determine the distance covered in between each of the time stamps
+
+2. Once we have the distance covered, I would calculate the velocity of our runner between each of the time stamps by $\Delta{d}/\Delta{t}$
+
+3. Finally, I would either (depending on the end user's preference):
+    + calculate the average acceleration between each of our time stamps by $\Delta{v}/\Delta{t}$, or
+    + using a velocity vs time graph, calculate instantaneous accelerations using calculus and limits
+
+4. Report maximum acceleration of our player
+
+
+
