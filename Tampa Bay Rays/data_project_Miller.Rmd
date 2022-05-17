@@ -1,0 +1,322 @@
+---
+title: "Rays Data Project"
+author: "Kenny Miller"
+date: "2/18/2022"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, out.width = "75%", out.height = "75%", warning = FALSE, message = FALSE) 
+library(caret); library(pROC); library(regclass); library(parallel); library(doParallel); library(ggplot2); library(gridExtra);  library(data.table); library(dplyr); library(splitstackshape); library(imputeMissings)
+setwd("~/MSBA/Full-Time Search/Tampa Bay Rays R&D Analyst/Data Project 1")
+```
+
+*****
+## *System Comparison and Data Maintenance*
+*****
+### Summary
+
+For the start of this analysis I would like to compare the two systems in question for determining each batted ball instance. My analysis below will show that:
+
+* System A appears to indeed be more accurate than System B,
+* There is a statistically significant difference in the readings of speed and vertical angle between the two systems, and 
+* The best way to replace missing data for one system is to develop a model utilizing the other system
+
+```{r data load in}
+batting <- read.csv("battedBallData.csv", header = T)
+```
+
+*Goal: Compare System A and B to see if one system appears to be more accurate and identify differences between each*
+
+Step 1: Compare Systems with Available Data
+```{r System Comparison}
+sum(complete.cases(batting))/nrow(batting) # ~88.5% of rows have info from both systems
+summary(batting) # more missing examples from A than B
+missing <- batting[which(is.na(batting$speed_A) & is.na(batting$speed_B)),]
+summary(missing) # 542 rows without any data from the two systems
+
+A <- ggplot(batting) +
+  aes(x = speed_A, y = vangle_A, color = hittype) +
+  geom_point() +
+  ggtitle("System A by Hit Type") +
+  xlab("Exit Velo (mph)") + ylab("Launch Angle (Deg)")
+B <- ggplot(batting) +
+  aes(x = speed_B, y = vangle_B, color = hittype) +
+  geom_point() +
+  ggtitle("System B by Hit Type") +
+  xlab("Exit Velo (mph)") + ylab("Launch Angle (Deg)")
+grid.arrange(A, B, ncol = 2)
+
+# System A mean and SD values
+mean(batting$speed_A, na.rm = T); sd(batting$speed_A, na.rm = T)
+mean(batting$vangle_A, na.rm = T); sd(batting$vangle_A, na.rm = T)
+# System B mean and SD values
+mean(batting$speed_B, na.rm = T); sd(batting$speed_B, na.rm = T)
+mean(batting$vangle_B, na.rm = T); sd(batting$vangle_B, na.rm = T)
+
+paired <- batting[complete.cases(batting),]
+var.test(paired$speed_A, paired$speed_B)
+t.test(paired$speed_A, paired$speed_B, paired = T)
+var.test(paired$vangle_A, paired$vangle_B)
+t.test(paired$vangle_A, paired$vangle_B, paired = T)
+```
+
+Based on the above checks, it is fair to say that System A and System B have statistically significant differences in how they measure speed and vertical angle for a batted ball. With System A, on average, reading exit velocities (speed) at higher levels than System B and launch angles (vertical angles) at lower levels than System B. 
+
+The two plots above also appear to confirm that System A is more accurate than System B. I am comfortable saying this because of the high collection of "ground ball" observations System B measures for batted balls with Launch Angles above 20 degrees. 
+
+My next step is to determine the best method for ensuring that players/instances that are captured by only one device are properly accounted for in the data.
+
+Step 2: Data Cleaning/Preparation
+```{r Data Cleaning/Prep}
+# Let's use models to predict missing values for the other system
+# I will use the paired data to build the models prior to estimating NAs in the original data
+speedA <- lm(speed_A ~ (hittype + speed_B + vangle_B)^2, data = paired)
+summary(speedA)
+vangleA <- lm(vangle_A ~ (hittype + speed_B + vangle_B)^2, data = paired)
+summary(vangleA)
+speedB <- lm(speed_B ~ (hittype + speed_A + vangle_A)^2, data = paired)
+summary(speedB)
+vangleB <- lm(vangle_B ~ (hittype + speed_A + vangle_A)^2, data = paired)
+summary(vangleB)
+
+# Let's replace the NA values
+batting.original <- batting # save original data before adjustments
+for (i in 1:nrow(batting)) {
+  row <- batting[i,]
+  if (complete.cases(row)) { next }
+  if (which(is.na(row))[1] == 4) {
+    s <- predict(speedA, row)
+    a <- predict(vangleA, row)
+    batting[i,c(4,5)] <- c(s,a)
+  } else if (which(is.na(row))[1] == 6) {
+    s <- predict(speedB, row)
+    a <- predict(vangleB, row)
+    batting[i,c(6,7)] <- c(s,a)
+  }
+}
+sum(complete.cases(batting))/nrow(batting)
+summary(batting); nrow(missing)
+# from above we know that there are 542 instances with no readings from either system
+# for further analysis I will replace the values in these rows with the median values based on hit types
+# I will replace values for both systems using median imputation
+types <- unique(batting$hittype)
+
+batting <- impute(batting) # median imputation
+# source code found online: https://rdrr.io/cran/imputeMissings/man/impute.html
+
+sum(complete.cases(batting))/nrow(batting)
+summary(batting)
+```
+
+In Step 2, I replaced missing values for all of the batted ball observations that had data from only one of the two systems, if there wasn't an observation for the batted ball between the two systems the values for both systems were replaced by median imputation by hit type; the code to complete this was found online, a link to the code is included in the code chunk above. The models I generated in this step were all significant and showed promise as predictors for the other system's metrics. Specifically both systems are able to explain the variance of the measurements from their counterpart at no worse than 82%. 
+
+*****
+## *Predicting Next Season's Speed-Off-Bat*
+*****
+
+*Goal: Predict next season's speed-off-bat for each batter in the original dataset*
+
+### Summary
+
+I was tasked with predicting the average speed-off-bat for next season for all of the players in our dataset. This prediction utilized the past season's batted ball data collected by two systems; due to the variability in some of the classifications for System B and the visualizations from the beginning of this project, I have chosen to use the measurements from system A for my scale. I found that a decision tree does well to estimate true speed off the bat. 
+
+When making final predictions for next season I utilized the Central Limit Theorem's guidelines, if a batter had more than 25 balls in play I used their true average predictions for what we can expect next year but if the batter had 25 balls in play or less I used a weighted average with the weights based on the proportion of the balls in play from the original data set. Predictions for all 816 batters can be found in the bat_speed data frame or the "Final_Batted_Ball_Predictions_Miller.csv" file included in my submission folder.
+
+**Cleaning**
+
+* Most of the necessary data cleaning was completed above during the system comparison and maintenance
+* I verified that the data matched the original in terms of number of batters in the data set
+* Removed the two "U" hit type observations, since both batters had many other observations in the data set
+* Split the data into Training and Holdout samples using stratified random sampling, 80% proportion by hit type
+
+**Model Development**
+
+* Started with a vanilla linear regression and progressed to additional models in increasing complexity
+* Found a Decision Tree does very well with this data
+* My laptop struggled with models more advanced than a vanilla decision tree
+* Using decision tree model, I generated predicted speed-off-bat measures for each instance. Once I had this I needed to generate predictions for each player, this was dependent on the number of balls in play from each batter:
+  * If the batter has more than 25 balls in play, since the speed_A distribution is roughly normal we can use the Central Limit Theorem and assume that the average of all of their balls in play is representative of their "true" capabilities
+  * If the batter has 25 or less balls in play, I used a weighted average, based on the proportion of hit types in the original data frame, to determine their "true" speed-off-bat. To ensure all hit types are included in a batter's average, I included the mean exit velocity from the data frame, by hit type, for hit types not observed from a batter. In making this decision I am assuming each batter has "normal" abilities compared to the entire population of batters in the data set
+
+**Future Recommendations**
+
+* More computing power and time to determine if more complex models would preform better
+* Include pitch specific information to determine how batters exit velocity changes from specific pitch characteristics 
+* Include previous seasons data to see how players are trending year over year with exit velocity
+
+*****
+
+Step 1: Data Check and any additional cleaning
+```{r data check}
+batters.original <- unique(batting.original$batter)
+length(batters.original) # 816
+batters <- unique(batting$batter)
+length(batters) # 816
+
+hist(batting$speed_A) # roughly normal with a slight left skew
+
+BIP <- aggregate(pitcher~batter, data=batting, FUN = length) # balls in play
+colnames(BIP) <- c("batter","abs")
+length(which(BIP$abs <= 25)) 
+# number of batters where I will need to adjust the averages since Central Limit Theorem won't hold
+# table(BIP$abs)
+
+# table(batting$pitcher)
+
+table(batting$hittype) # what is U and why are there only 2 instances? Will investigate
+batting[which(batting$hittype == "U"),]
+BIP[which(BIP$batter %in% c(493,479)),]
+# I will drop the U observations since batters have 195 and 91 ABs
+batting <- batting[which(batting$hittype != "U"),]
+batting <- droplevels(batting)
+
+
+# checking for near zero and zero variance columns
+infodensity <- nearZeroVar(batting, saveMetrics= TRUE)
+infodensity[infodensity$nzv,] # there are no columns to worry about for near-zero variance
+# checking for highly correlated values
+highlycorrelated <- findCorrelation(cor_matrix(batting), cutoff = 0.95)
+colnames(batting)[highlycorrelated] 
+# speed_A is possibly highly correlated but I will leave it alone
+```
+
+Step 2: Create Training and Holdout Sample
+```{r training/holdout}
+write.csv(batting,"preprocessing_batting.csv", row.names = F)
+set.seed(23); TRAIN <- stratified(batting, c("hittype"), .8, bothSets = T)$SAMP1
+set.seed(23); HOLDOUT <- stratified(batting, c("hittype"), .8, bothSets = T)$SAMP2
+# code found for stratified sampling via StackOverflow 
+  # https://stackoverflow.com/questions/23479512/stratified-random-sampling-from-data-frame
+# remove batter identifier from both Training and Holdout samples
+TRAIN <- TRAIN[,-c("batter","pitcher")]; HOLDOUT <- HOLDOUT[,-c("batter","pitcher")]
+```
+
+I decided to do a stratified random sample for this data by hit type to ensure that all hit types are seen in the training and holdout samples. I removed batter and pitcher though after because they are IDs and should not be used in the model.
+
+Step 3: Model Development
+```{r model development}
+# using system A for all model creation
+# y = speed_A
+# Set up how generalization error is to be estimated (5-fold crossvalidation shown here)
+fitControl <- trainControl(method="cv",number=5, allowParallel = TRUE) 
+
+# Vanilla Linear Regression
+set.seed(23); GLM <- train(speed_A~.,data=TRAIN,method='glm',
+                            trControl=fitControl,preProc=c("center", "scale") )
+GLM$results
+postResample(predict(GLM,newdata=HOLDOUT),HOLDOUT$speed_A) # RMSE: 5.8330801 
+
+# Regularized logistic regression
+glmnetGrid <- expand.grid(alpha = seq(0,1,.05),lambda = 10^seq(-4,-1,length=10))   
+
+set.seed(23); GLMnet <- train(speed_A~.,data=TRAIN,method='glmnet', tuneGrid=glmnetGrid,
+                               trControl=fitControl, preProc = c("center", "scale"))
+# GLMnet 
+plot(GLMnet)
+GLMnet$bestTune 
+# GLMnet$results 
+GLMnet$results[rownames(GLMnet$bestTune),]
+postResample(predict(GLMnet,newdata=HOLDOUT),HOLDOUT$speed_A) # RMSE: 5.8336888 
+
+# No improvement over the vanilla linear
+
+# Vanilla Partition
+treeGrid <- expand.grid(cp=10^seq(-5,-1,length=25))
+
+set.seed(23); TREE <- train(speed_A~.,data=TRAIN,method='rpart', tuneGrid=treeGrid,
+                             trControl=fitControl, preProc = c("center", "scale"))
+
+# TREE
+plot(TREE) 
+TREE$bestTune 
+# TREE$results 
+TREE$results[rownames(TREE$bestTune),] # RMSESD: 0.1795576 
+postResample(predict(TREE,newdata=HOLDOUT),HOLDOUT$speed_A) # RMSE: 4.0457643 
+
+# To visualize the tree if wanted 
+# TREE <- rpart(speed_A~.,data=TRAIN,cp=4.641589e-05)  
+# visualize_model(TREE)
+
+# Improvement over the previous models
+
+# random forest 
+# (significant run time and I am unable to get it to complete in a reasonable amount of time)
+# forestGrid <- expand.grid(mtry=c(1,3,5,12))
+# cluster <- makeCluster(detectCores() - 1) #parallelization
+# registerDoParallel(cluster)
+# FOREST <- train(speed_A~.,data=TRAIN,method='rf',tuneGrid=forestGrid,
+#                                trControl=fitControl, preProc = c("center", "scale"))
+# stopCluster(cluster)
+# registerDoSEQ()
+# plot(FOREST)
+# FOREST$bestTune
+# FOREST$results[rownames(FOREST$bestTune),]
+# postResample(predict(FOREST,newdata=HOLDOUT),HOLDOUT$speed_A) # RMSE:
+
+# Boosted Tree
+# Same as Random Forest
+# gbmGrid <- expand.grid(n.trees=c(100,200,500),interaction.depth=1:4,
+#                        shrinkage=c(.01,.001),n.minobsinnode=c(5,10))
+# cluster <- makeCluster(detectCores() - 1) # parallelization
+# registerDoParallel(cluster) 
+# set.seed(23); GBM <- train(speed_A~.,data=TRAIN, method='gbm',tuneGrid=gbmGrid,
+#                            verbose=FALSE,trControl=fitControl, preProc = c("center", "scale"))
+# stopCluster(cluster) 
+# registerDoSEQ()
+# plot(GBM)
+# GBM$bestTune
+# GBM$results[rownames(GBM$bestTune),]  
+# postResample(predict(GBM,newdata=HOLDOUT,n.trees=500),HOLDOUT$speed_A) 
+# RMSE: 
+```
+
+Step 4: Choosing the best model from those tested
+
+Since the Decision Tree had a RMSE of 4.045 and a SD of 0.1796, which is more than one standard deviation better than the other models that completed, I will use this for my predictions.
+```{r Final Model}
+model_data <- batting[,-c(1,2)] # ensuring batter and pitcher aren't in final model
+set.seed(23); FINAL <- train(speed_A~., data=model_data, 
+                             method="rpart", tuneGrid=expand.grid(cp=4.641589e-05), 
+                             trControl=fitControl, preProc=c("center","scale"))
+
+predictions <- predict(FINAL, newdata = batting)
+```
+
+Step 5: Final Player Averages
+```{r Final Averages}
+batting_final <- batting
+batting_final$prediction <- predictions
+
+nrow(BIP) # 816 batters in final predictions
+length(unique(batting_final$batter))
+length(which(BIP$abs <= 25)) # 342 batters will not meet CLT guidelines and will need 
+weights <- table(batting_final$hittype)/nrow(batting_final) # original weight table
+
+ht_averages <- batting %>% group_by(hittype) %>% summarise(prediction=mean(speed_A))
+# ^ average speed-off-bat by hit type for all batters in the data set
+# average is named "prediction" in this to help with row binding within the loop
+bat_speed <- setNames(data.frame(matrix(ncol=2,nrow=816)), c("Batter","Speed_Off_Bat"))
+for (i in 1:nrow(BIP)) {
+  b <- BIP[i,]
+  sub <- subset(batting_final, batter == b$batter)
+  if (b$abs > 25) {
+    sob <- mean(sub$prediction) # sob = speed of bat
+  } else {
+    x <- aggregate(prediction~hittype, data=sub, FUN=mean)
+    missing_hts <- setdiff(ht_averages$hittype, x$hittype)
+    x <- rbind(x, ht_averages[which(ht_averages$hittype %in% missing_hts),])
+    x <- x[order(x$hittype),]
+    sob <- weighted.mean(x$prediction, weights)
+  }
+  bat_speed$Batter[i] <- b$batter
+  bat_speed$Speed_Off_Bat[i] <- sob
+}
+head(bat_speed); hist(bat_speed$Speed_Off_Bat); summary(bat_speed$Speed_Off_Bat)
+nrow(bat_speed)
+write.csv(bat_speed, "Final_Batted_Ball_Predictions_Miller.csv", row.names = F)
+```
+
+
