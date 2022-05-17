@@ -1,0 +1,277 @@
+---
+title: "Phillies QA Questionnaire"
+date: "3/22/2021"
+output:
+  pdf_document: default
+  html_notebook: null
+  html_document:
+    df_print: paged
+  word_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, out.width = "75%", out.height = "75%")
+library(caret); library(pROC); library(regclass); library(splitstackshape); library(parallel); library(doParallel)
+setwd("~/MSBA/Summer Internship 2021 Applications/Philadelphia Phillies Quantitative Analyst Intern/Questionnaire Work")
+```
+
+******
+## *Part A*
+******
+
+### **Introduction**
+
+| This document describes the proposed analysis to answer the question proposed by our Major League infield coach. The question to be answered is below:
+
+|     "One of our infielders, Player X, seems to be struggling in the field. He's got a great arm, but he's made a few errors this season and is failing to get to some balls. Could you look into this and identify any problem areas that we can target with drills?"
+
+### **Potential Approaches**
+
+| To better investigate what is causing our player to struggle fielding I can look at a few different questions, including:
+
+* What are the batted ball profiles of hits toward this player? If we can see which types of balls/hits are not resulting in a play being made we can design drills to attack this deficiency and strengthen it.
+* Where is the player positioned prior to and at pitch delivery? If we see that this player is not setting themselves up for success with their positioning (too far to the glove, or arm, side) we can focus on improvement in this regard.
+* What plays are not being made? By reviewing the Baseball Savant Outs Above Average (OAA) Leaderboard we can see if our player has less success going in a certain direction and can use drills to work on these plays.
+
+| In this analysis I will explore all three of the above approaches.
+
+### **Data**
+
+| The data I will use for the analysis of our infielder is a collection of batted ball data, from Trackman, fielder movement data, and fielder positioning data. This data is available via Baseball Savant and Trackman data. An example of some of the data to review and be used in this analysis is below in **Table 1**.
+
+```{r data Table, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+library(kableExtra)
+library(dplyr)
+Variables <- c("Exit Velocity", "Launch Angle", "Hit Spin Rate", "Distance", "Bearing", "OAA", "In", "Right", "Left", "Back", "RHB", "LHB", "Success Rate", "Depth", "Postion Angle", "First Step", "Speed", "Exchange Time", "playID")
+Description <- c("The speed of the ball as it leaves the bat in miles per hour", "How steeply the ball leaves the bat as an angle (up or down)", "How quickly the ball is spinning as it leaves the bat in revolutions per minute", "Estimated carry distance (ball in the air) of a batted ball (ft.)", "Where the ball would have landed had it not been obstructed/caught, measured in degrees with 0 being a straight line from home to second base", "Outs Above Average: the cumulative effect of all individual plays a fielder has been credited or debited with (helps to measure range)", "OAA on plays made in front of fielder's starting position", "OAA on plays made to a fielder's right", "OAA on plays made to a fielder's left", "OAA on plays made behind a fielder's starting position", "OAA on right handed batters", "OAA on left handed batters", "Percentage of plays made successfully", "How far from home plate a fielder starts (measured in feet)", "Angle of fielder at the start meausred in degrees (0 would be a straight line from the playe to second base)", "Time after ball is hit before fielder moves", "How fast a fielder moves when pursuing the ball (mph)", "Time it takes from catch to throw", "Unique ID for each play")
+```
+
+```{r Table Creation, size="30em"}
+kbl(cbind(Variables, Description), booktabs = T, centering = T, 
+    caption = "Fielding Data of Interest") %>% 
+  kable_styling(latex_options =  c("striped", "scale_down"), 
+                full_width = F) %>%
+  column_spec(1, bold = T, color = "black") %>%
+  column_spec(2, italic = T, width = "30em")
+```
+
+
+### **Potential Issues**
+
+When we review the dataset and the variables of interest I notice that there could be some limitations in how we can review and use the Outs Above Average metric. Since our player is struggling to get to some balls, this variable could be skewed. We could also run into issues with consistency in the player positioning data because this is an average based on the filters applied on the Baseball Savant web page and may not be as accurate as we would like it to be when studying the data. 
+
+Some of the Trackman data I hope to use in this analysis also posses an issue because "Distance" and "Bearing" are both estimated and extrapolated based on other variables and could become an issue if the system is not calibrated or measurements are not calculated properly, reducing accuracy. This limitation will be necessary to keep in mind as we analyze and clean the original data pull, but the measurements from Trackman are essential to our analysis and drill design to help our infielder improve.
+
+### **Methodology**
+
+With the potential data issues above the best path forward seems to be analyzing the starting position of our infielder as well as reviewing the movement patterns our player displays. We can review all three questions in greater detail after focusing on the player's positioning.
+
+The first step will be to visualize our positioning data and determine if there are any trends in where our infielder is starting both in depth and angle. I would then look to overlay the batted ball location information and match them to see how far he is having to move to make a play. After reviewing the visual, I would look to include the OAA information to better understand potential directional limitations of our infielder. Finally, if we are not able to identify adjustments and drills to help our infielder we should look at the batted ball information to determine how large of a role the pitcher/batter interaction is affecting our fielder. This analysis could go much deeper and be applied across the team if requested, but should provide a strong first draft of analysis requested by the coach.
+
+### **Resources**
+
+* https://trackman.zendesk.com/hc/en-us/articles/115002776647-Radar-Measurement-Glossary-of-Terms - Information for batted ball statistics
+* https://baseballsavant.mlb.com/visuals/fielder-positioning - Information for fielder positioning
+* https://baseballsavant.mlb.com/leaderboard/outs_above_average?type=Fielder&year=2020&team=&range=year&min=q&pos=if&roles=&viz=show - Motivation for seeing which plays are made and which ones are not
+
+*****
+## *Part B*
+*****
+### Summary
+
+I was tasked with predicting a batter's 2018 end of season batting average given their batting performance in March and April of that same year. The model I developed used a stepwise regression approach and ended up predicting Full Season batting average with an error of about 25 points (0.025) on the holdout sample. This model was an improvement over the simplest model I could think of, batting average in March/April predicting end of season model, by about 1 point on the holdout.
+
+**Cleaning**
+
+* Checked the summaries of the variables in the data frame to ensure no missing values
+* Verified the distributions of each variable to ensure they were not skewed
+* Corrected Jace Peterson's team for the 2018 season to be the Yankees (verified with mlb.com)
+* Split the data into training and holdout samples; using a stratified random 80% proportion by Teams
+
+**Model Development**
+
+* Started by fitting vanilla linear regression model without interactions
+* Stepped up to develop regularized regression, partition models, random forest, and a boosted tree model
+* All of those models had about the same final results on the holdout with the regularized regression having the best RMSE but the other models were within one standard deviation and we cannot distinguish which were better
+* After running through these more advanced models, I decided to test more basic linear regression models to see if these models struggled or did well
+* The base model of March and April Batting Average predicting Full Season, actually predicts just as well if not better than most of the more "advanced" models; this is somewhat disappointing overall but I then wanted to check out regression with interactions and a stepwise algorithm
+* Using a stepwise algorithm, with a full model of all predictors and two-way interactions and a naive model with 1 as the predictor, I was able to identify a linear model that reduced RMSE below the "advanced" models and the base linear model
+* The best linear model used variables that basically recalculated the batting average from March and April, and added information to help explain how often a batter makes contact and puts the ball in play
+* Including interactions greatly improved the model
+
+**Conclusions**
+
+During this model development I found many different ways to attempt to predict batting average. The best model ended up being a descriptive linear model that included interactions between the variables. Since a majority of our models included variables that were able to recalculate batting average these were the most impressive during my stepwise analysis.
+
+
+**Future Recommendations**
+
+* Include more variables that are solely controlled by the batter's actions during plate appearances, such as Exit Velocity and Launch Angle
+* Include interactions in more advanced modeling techniques, ie. neural networks, support vector machines, to see how they compared to the linear models developed here
+* Include previous seasons' batting averages/metrics (along with player level) to see how they can improve our model via machine learning and time series forecasting
+
+*****
+```{r Model Development Set Up}
+batting <- read.csv("batting.csv", header=T)
+```
+
+*Goal: Predict final batting average in the 2018 season based on various batting statistics from March/April 2018*
+
+Step 1: Data Cleaning/Validation
+```{r Data Cleaning}
+batting.original <- batting
+table(batting$Team)
+# update Jace Peterson team to be his 2018 team (Yankees) 
+  # [verified on mlb.com https://www.mlb.com/player/jace-peterson-607054]
+batting[which(batting$Team == "- - -"),"Team"] <- "Yankees"
+batting[which(batting$Name == "Jace Peterson"),]
+table(batting$Team)
+summary(batting) # no NA values to worry about
+hist(batting$FullSeason_AVG)
+# all histograms appear to be okay to use without transformations! 
+  # (Stolen Bases may be an issue but for the moment let's leave it alone)
+# since Player_id and Name are identifiers we will remove them from batting 
+batting$ï..playerid <- NULL
+batting$Name <- NULL
+table(batting$Team) 
+# since there is limited representation for each team, we will use stratified sampling
+# checking for near zero and zero variance columns
+infodensity <- nearZeroVar(batting, saveMetrics= TRUE)
+infodensity[infodensity$nzv,] # appears we do not have any ZeroVar or nearZeroVar variables 
+  # because we return no rows, so let's keep moving!
+# checking for highly correlated values
+highlycorrelated <- findCorrelation(cor_matrix(batting), cutoff = 0.9)
+highlycorrelated # Plate Appearances and Slugging % are highly 
+  # correlated with something else, but I don't feel comfortable removing them 
+```
+
+Step 2: Create Training and Holdout Samples
+```{r Training and Holdout Creation}
+set.seed(23); TRAIN <- stratified(batting, c("Team"), .8, bothSets = T)$SAMP1 
+# break batting into training rows (80% team representation)
+set.seed(23); HOLDOUT <- stratified(batting, c("Team"), .8, bothSets = T)$SAMP2 
+# we will use 20% of team representation as the holdout
+# code found for stratified sampling via StackOverflow 
+  # https://stackoverflow.com/questions/23479512/stratified-random-sampling-from-data-frame
+```
+
+Step 3: Model Building Time
+```{r model building}
+# set up generalization error estimation (using 10-fold cross validation here)
+fitControl <- trainControl(method="cv",number=10, allowParallel = TRUE)
+
+# vanilla linear regression
+set.seed(23); GLM <- train(FullSeason_AVG~.,data=TRAIN,method='glm',
+                            trControl=fitControl,preProc=c("center", "scale") )
+GLM$results # RMSE: 0.028707 
+postResample(predict(GLM,newdata=HOLDOUT),HOLDOUT$FullSeason_AVG) # 0.02632316
+
+# regularized linear regression
+glmnetGrid <- expand.grid(alpha = seq(0,1,.05),lambda = 10^seq(-4,-1,length=10))
+set.seed(23); GLMnet <- train(FullSeason_AVG~.,data=TRAIN,method='glmnet', tuneGrid=glmnetGrid,
+                               trControl=fitControl, preProc = c("center", "scale"))
+plot(GLMnet) #See how error changes with choices
+GLMnet$bestTune #Gives best parameters
+GLMnet$results[rownames(GLMnet$bestTune),]  # RMSE: 0.02552582  
+postResample(predict(GLMnet,newdata=HOLDOUT),HOLDOUT$FullSeason_AVG) # 0.02530690 
+
+# vanilla partition
+treeGrid <- expand.grid(cp=10^seq(-5,-1,length=25))
+set.seed(23); TREE <- train(FullSeason_AVG~.,data=TRAIN,method='rpart', tuneGrid=treeGrid,
+                             trControl=fitControl, preProc = c("center", "scale"))
+plot(TREE)
+TREE$bestTune
+TREE$results[rownames(TREE$bestTune),] # RMSE: 0.0264044  
+postResample(predict(TREE,newdata=HOLDOUT),HOLDOUT$FullSeason_AVG) # 0.02675582 
+
+# random forest
+forestGrid <- expand.grid(mtry=c(1,3,5,12,15,18,21)) 
+cluster <- makeCluster(detectCores() - 1) #parallelization
+registerDoParallel(cluster) 
+FOREST <- train(FullSeason_AVG~.,data=TRAIN,method='rf',tuneGrid=forestGrid,
+                               trControl=fitControl, preProc = c("center", "scale"))
+stopCluster(cluster)
+registerDoSEQ() 
+plot(FOREST)
+FOREST$bestTune
+FOREST$results[rownames(FOREST$bestTune),] # RMSE: 0.02669615  
+postResample(predict(FOREST,newdata=HOLDOUT),HOLDOUT$FullSeason_AVG) # 0.02663614 with mtry=5
+
+# boosted tree
+gbmGrid <- expand.grid(n.trees=c(100,200,500),interaction.depth=1:4,
+                       shrinkage=c(.01,.001),n.minobsinnode=c(5,10))
+cluster <- makeCluster(detectCores() - 1) # parallelization
+registerDoParallel(cluster) 
+set.seed(23); GBM <- train(FullSeason_AVG~.,data=TRAIN, method='gbm',tuneGrid=gbmGrid,
+                           verbose=FALSE,trControl=fitControl, preProc = c("center", "scale"))
+stopCluster(cluster) 
+registerDoSEQ()
+plot(GBM)
+GBM$bestTune
+GBM$results[rownames(GBM$bestTune),] # RMSE: 0.02598728  
+postResample(predict(GBM,newdata=HOLDOUT,n.trees=500),HOLDOUT$FullSeason_AVG) 
+# 0.02553700  with ntrees=500
+```
+
+Step 4: Choosing the best model of those tested
+
+When we look at the RMSE of the models estimated via cross validation, we see the boosted tree, random forest, vanilla partition, and regularized linear all are within 1 standard deviation of the best RMSE value. Let's check and see how much each model overfit, by calculating % increase in RMSE.
+
+```{r overfitting check}
+# Regularized Linear
+(0.02530690 - 0.02552582)/0.02552582 # -0.9%
+# Vanilla Partition
+(0.02675582 - 0.0264044)/0.0264044 # 1.3%
+# Random Forest
+(0.02663614 - 0.02669615)/0.02669615 # -0.2%
+# Boosted Tree
+(0.02553700 - 0.02598728)/0.02598728 # -1.7%
+```
+
+All the models appear to not overfit the Holdout data, based on the general guideline of a less than 10% increase being solid. Let's check the best models out and test step-wise regression and base models.
+
+```{r Final Models}
+FINAL <- train(FullSeason_AVG~., data=TRAIN, method="glmnet",
+               tune.grid=expand.grid(alpha=0.9,lambda=0.004641589),
+               trControl=trainControl(method="none"),
+               preProc=c("center", "scale"))
+predictions <- predict(FINAL, HOLDOUT)
+plot(y=HOLDOUT$FullSeason_AVG, x=predictions); abline(0,1)
+sqrt(mean((predictions-HOLDOUT$FullSeason_AVG)^2)) # RMSE: 0.0261405
+
+FINAL2 <- train(FullSeason_AVG~., data=TRAIN, method="glm",
+               trControl=trainControl(method="none"),
+               preProc=c("center", "scale"))
+predictions2 <- predict(FINAL2, HOLDOUT)
+plot(y=HOLDOUT$FullSeason_AVG, x=predictions2); abline(0,1)
+sqrt(mean((predictions2-HOLDOUT$FullSeason_AVG)^2)) # RMSE: 0.02632316
+
+predictions3 <- predict(GBM, HOLDOUT)
+plot(y=HOLDOUT$FullSeason_AVG, x=predictions3); abline(0,1)
+sqrt(mean((predictions3-HOLDOUT$FullSeason_AVG)^2)) # RMSE: 0.025537
+
+FINAL4 <- lm(FullSeason_AVG~MarApr_AVG, data = TRAIN)
+predictions4 <- predict(FINAL4, HOLDOUT)
+plot(y=HOLDOUT$FullSeason_AVG, x=predictions4); abline(0,1)
+sqrt(mean((predictions4-HOLDOUT$FullSeason_AVG)^2)) # RMSE: 0.02602793
+
+full <- lm(FullSeason_AVG~.^2, data=TRAIN)
+naive <- lm(FullSeason_AVG~1, data=TRAIN)
+S <- step(naive,scope=list(lower=naive,upper=full),direction="both",trace=0)
+
+FINAL5 <- lm(formula(S), data=TRAIN)
+predictions5 <- predict(FINAL5, HOLDOUT)
+plot(y=HOLDOUT$FullSeason_AVG, x=predictions5); abline(0,1)
+sqrt(mean((predictions5-HOLDOUT$FullSeason_AVG)^2)) # RMSE: 0.02517612
+summary(S)
+VIF(S)
+check_regression(S)
+```
+
+When we compare our more advanced modeling techniques with the base/simplest model we see they do not do much better. If we include interactions and use a descriptive linear regression, found via the stepwise algorithm, we build a model that makes the best predictions. All of my models appear to have strong residual plots (seen above) because of the randomness of the points compared to the y=x line; this leads to be comfortable with any of the above models in predicting full season batting average, but our best choice is still the stepwise model as its regression check looks picturesque. 
+
+
+
