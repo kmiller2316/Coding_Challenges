@@ -13,6 +13,11 @@ This repo showcases project code for various job application challenges I have h
   * The coding_challenge.Rmd file, and pdf, contains code to develop a model to determine the probability of scoring on a tag-up play
   * The Go_NoGo folder contains code and models to generate a dashboard to assist in decision making on whether or not to send a runner. The app also grades outfielders on a three teir scale (similar to a stoplight) of whether you can run against them. A 20-80 scale grade is also included in the dashboard.
 
+## Melton Scholars
+ * Contains two example files of code utilized in the analysis and cleaning of my Senior undergraduate research project.
+ * The files showcase my work and utilization of various functions to answer various questions posed by the stakeholders. 
+ * These files allowed us to answer important factors that drive fan decision making when purchasing tickets as well as estimating importance of the variables to driving final price differences in the resale market vs the primary market
+
 ### Milwaukee Brewers
   * Contains the coding and pdf writeup for the technical assessment as part of my application process for the research and development analytics position. The files contain a description of the questions asked and are answered below in the same file.
 
