@@ -1,0 +1,128 @@
+Driveline Baseball R&D Analyst Round 1 Survey Questionnaire. Completed 3/6/2021 at 6:45 pm
+
+1. Name/email --
+
+# 
+David Kenneth (Kenny) Miller/dmille83@utk.edu
+
+2. List your favorite packages to use in your preferred scripting language. (Thinking specifically R 
+and/or Python although other answers will be accepted where appropriate)
+
+# 
+When working in R I prefer to use the base stats package along with tidyverse (specifically dplyr), caret and mlogit for 
+model development, plotly for visualization, regclass for initial model building and cleaning, arules for market segment/basket analysis, and lubridate to adjust dates 
+for implementing in visualizations and models!
+
+3. Define/Explain these terms to the best of your ability in your own words (max 1-2 sentences each, 250 word count total):
+Seam shifted wake
+wOBA Linear Weights
+Induced Vertical break
+Smash Factor
+
+# 
+Seam Shifted Wake: The process of manipulating the orientation of the seams at release to alter the pressures and drag on the baseball creating different movement patterns in pitch direction.
+wOBA Linear Weights: Calculating the average run expectancy of an at-bat outcome to determine a relative weighted sum; this is used to compare a batter's effectiveness in run production.
+Induced Vertical break: The difference in the pitch depth/height at the plate compared to what would be expected due to the effects of gravity.
+Smash Factor: How efficiently a batter creates exit velocity on a swing from their bat speed.
+
+4. Before attempting to apply a regression model to a big data question, list the steps you consider (150 word count total)
+
+# 
+1. Check the scatter plots of each predictor vs y to check for a linear relationship.
+2. Do validation checks on each column to ensure the data values are within reasonable ranges.
+3. Visualize the data in R/Tableau to check for any needed transformations to symmetry in the numeric variables.
+4. Check the categorical variables to make sure there is enough representation in each level and adjust them if necessary.
+5. Screen for correlated predictors and near zero-variance predictors.
+
+
+5. Before attempting to apply a classification model to a big data question, list the steps you consider (150 word count total)
+
+# 
+1. Check the y variable's classes to make sure the prediction classes are not too imbalanced and have sufficient representation.
+2. Do validation checks on each column to ensure the data values are within reasonable ranges.
+3. Visualize the data in R/Tableau to check for any needed transformations to symmetry in the numeric variables.
+4. Check the categorical variables to make sure there is enough representation in each level and adjust them if necessary.
+5. Screen for correlated predictors and near zero-variance predictors.
+
+6. Give us the title of a public research baseball piece from 2018 on (can be from Fangraphs, Baseball Prospectus, Driveline, 
+The Athletic, The Ringer) that you would choose to critique from a methods POV (from research question design to data 
+processing/modeling, etc). Also, give us the title of a public research piece from any time period where you believe the methods 
+are nearly flawless.
+
+# 
+Flawed Methods: A DEEPER DIVE INTO FASTBALL SPIN RATE by Dan Aucoin, Michael O’Connell, and Eric Jagers at Driveline Baseball; In this article I would like to see more information on how spin axis 
+and spin rate correlate and help create consistency in the spin metrics and pitch movement. This would be an added approach to the design of the research question and how we can interpret and utilize
+spin rate data.
+Nearly Flawless: CHANGING SHOULDER ABDUCTION by Trainer Bryan Leslie and Biomechanicst Anthony Brady at Driveline Baseball.
+
+
+7. If tasked with controlling for park errors in Trackman data at the MLB level (think 2019 season, for example), list what 
+factors you’d need to control for. Please be concise and just jot down bullets
+
+# I would focus on controlling for the following factors:
+- Weather (indoor vs outdoor and time of year).
+- Altitude/Dimensions (any other park related factors).
+- Errors in pitch/batted ball tracking (including velocity measurements, break, and exit velocity).
+- Missed pitch instances.
+- Length of homestand (better calibration has been seen before as homestand continues).
+
+8. Referring to Pic #1 (email)
+For the following tables, write out these SQL queries:
+-Return the IDs of pitchers who threw pitch_type “CB” during 2019
+-Return the average velocity by month for pitch_type “FB” from pitcher_id “a123” during 2020
+
+# Query 1:
+SELECT DISTINCT pitcher_id
+FROM pitch_level as pl JOIN game_info as gi
+ON pl.game_id_fk = gi.game_id
+WHERE Year(gi.game_date) = 2019 AND pl.pitch_type = "CB";
+
+# Query 2:
+SELECT AVG(velocity) as avg_velocity, pitch_type, pitcher_id, Month(game_date) as month
+FROM pitch_level as pl JOIN game_info as gi
+ON pl.game_id_fk = gi.game_id
+WHERE Year(gi.game_date) = 2020
+	AND pl.pitch_type = "FB"
+	AND pl.pitcher_id = "a123"
+GROUP BY pitch_type, pitcher_id, month
+ORDER BY month; # can also order by avg_velocity if that is preferred
+
+9. Referring to Pic #2 (email)
+Using the below summary metrics from an outing, please provide the following:
+-A bulleted list of pitch types, in order, from highest quality to lowest quality. Keep in mind that there is 
+no right answer, just your opinion. 
+-A bulleted list of pitch design recommendations in order of what you perceive to be  the lowest hanging fruit to 
+improve this particular pitcher’s arsenal.
+Please be concise -- 250 word limit
+
+# Pitch Types by Quality:
+1. Sinker
+2. Cutter
+3. Slider
+4. Changeup
+5. 4-seam
+6. Curveball
+
+# Recommendations
+1. Reduce 4-seam usage in favor of sinker and cutter.
+2. Increase slider usage and bring changeup usage down (levels should be relatively close).
+3. Curveball and 4-seam should be used only in spots to get a hitter off balance and/or finish an at-bat.
+4. Review video on slider release and identify adjustments in pitch grip and release to improve depth and movement of the slider. Doing this has the objective of increasing pitch 
+movement and late break to distinguish its movement pattern and increase the break from that of the pitcher's cutter. This will foster more missed bats.
+5. Review video on changeup release to better understand the expected movement and spin measurements of the pitch. Changeup already has natural sink, due to low spin rate, and comes 
+out of the same slot as his fastball, making it difficult to distinguish but lowering spin efficiency will help the pitcher develop more vertical break, improving its quality and ability
+to miss bats. With a majority of this pitcher's pitches moving horizontally, it is important to adjust and add something that breaks more vertically to disrupt timing.
+
+
+10. When creating a tool or report for athletes/coaches, please rank these three areas in order of importance 
+(please explain why in 2-3 sentences): feature set, performance, and usability?
+
+# Ranked Importance
+1. Usability
+2. Performance
+3. Feature Set
+Usability is the most inmportant factor when creating a tool or report for athletes and coaches; the tool needs to display the results in a clear and easy to understand way, by doing this the athletes
+and coaches will be able to know exactly what they are looking at and how they can use the results in their work. Performance is next because the tool needs to perform what is being asked, for example my 
+work with the University of Tennessee Women's Soccer team is to create a performance metric and display it so we can make better decisions in practice to see our best results in games. Finally, feature set
+while important is not as valuable as usability and performance, because we can provide a lot of information without clogging the display with unnecessary plots and tables; all we need is to display the 
+information of interest and any filters that will imporve the readability or make the outcomes of interest more clear, such as date ranges or athlete level separations.
