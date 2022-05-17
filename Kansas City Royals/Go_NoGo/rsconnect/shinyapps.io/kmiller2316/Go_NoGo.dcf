@@ -1,0 +1,14 @@
+name: Go_NoGo
+title: Go_NoGo
+username:
+account: kmiller2316
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 5378610
+bundleId: 5417517
+url: https://kmiller2316.shinyapps.io/Go_NoGo/
+when: 1640796258.63783
+lastSyncTime: 1640796258.63783
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: ball_apex_x.rds|ball_apex_y.rds|ball_apex_z.rds|ball_ax.rds|ball_ay.rds|ball_az.rds|ball_v.rds|ball_vx.rds|ball_vy.rds|ball_vz.rds|landing_x.rds|landing_y.rds|model.rds|tag_ups.csv|throw_dist.rds|time_to_catch.rds
