@@ -1,0 +1,373 @@
+---
+title: "Royals Coding Challenge"
+author: "Kenny Miller"
+date: "12/26/2021"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(tidy.opts=list(width.cutoff=60), tidy=TRUE, echo = TRUE, out.width = "75%", out.height = "75%")
+library(plotly)
+# devtools::install_github("bdilday/GeomMLBStadiums") 
+# information to plot field found at https://github.com/bdilday/GeomMLBStadiums
+library(GeomMLBStadiums); library(ggplot2); library(dplyr); library(gbm)
+library(caret); library(pROC); library(regclass); library(splitstackshape); library(parallel); library(doParallel)
+tags <- read.csv("royals_project_dataset.csv", header = T)
+tags_original <- tags
+```
+
+*Goal 1: Generate and evaluate a model to predict the probability of a successful tag up (run scores) on a batted ball*
+*Goal 2: Create a UI to allow users to input various information and return a "Go" or "No Go" decision to send a runner*
+*Goal 3: Grade outfielders via three tiers (similar to a stoplight) of whether you can run against them (20-80 scale as well for how well they control the run game will be inverse when compared to the tiers)*
+
+******
+## Goal 1 Steps/Process
+******
+
+Step 1: Data Cleaning/Validation
+```{r data review/cleaning}
+summary(tags)
+sum(complete.cases(tags))/nrow(tags_original) # can maintain about 56% of the original data
+tags <- tags[complete.cases(tags),] 
+# lets move forward with only the cases where we have all of the data
+summary(tags)
+head(tags)
+sapply(tags, class)
+
+# let's convert outs_on_play
+summary(tags$outs_on_play)
+tags[which(tags$outs_on_play == -1),] 
+# since all runs_on_play in these columns are 0 I will assume 
+# this is a data entry error and convert these from -1 to 1
+tags[which(tags$outs_on_play == -1),"outs_on_play"] <- 1
+summary(tags$outs_on_play)
+tags$outs_on_play <- as.factor(ifelse(tags$outs_on_play == 1, "out", "no_out"))
+table(tags$outs_on_play)
+
+# let's convert runs_on_play
+summary(tags$runs_on_play)
+tags$runs_on_play <- as.factor(ifelse(tags$runs_on_play == 1, "run", "no_run"))
+table(tags$runs_on_play)
+
+summary(tags)
+# outs_on_play and runs_on_play should be mutually exclusive based on Dec 22, 2021 email from Rob
+yes_yes <- tags[which(tags$outs_on_play == "out" & tags$runs_on_play == "run"),] # checks out
+no_no <- tags[which(tags$outs_on_play == "no_out" & tags$runs_on_play == "no_run"),] 
+# 975 rows where neither an out nor run occurs
+# totally fine because runner does not have to tag on the fly ball
+
+# add in fielding/fielder information
+for (i in 1:nrow(tags)) {
+  cols <- grep(tags$fielder_pos[i],colnames(tags))
+  fielder_x <- tags[i,26] - tags[i,cols[1]]
+  fielder_y <- tags[i,27] - tags[i,cols[2]]
+  tags$fielder_distance_x[i] <- fielder_x
+  tags$fielder_distance_y[i] <- fielder_y
+}
+# grep(tags$fielder_pos[1],colnames(tags))
+
+# checking for near zero and zero variance columns
+infodensity <- nearZeroVar(tags, saveMetrics= TRUE)
+infodensity[infodensity$nzv,] # there is one column to keep an eye on (outs_on_play) for near zero 
+# variance but can remove in model build because it'll affect runs_on_play predictive ability
+# checking for highly correlated values
+highlycorrelated <- findCorrelation(cor_matrix(tags), cutoff = 0.95)
+colnames(tags)[highlycorrelated] 
+# a handful of columns appear to have high correlations with other variables but I'm not sure 
+# which ones and I don't feel comfortable removing them currently
+```
+
+
+Step 2: Create Model Training/Holdout Sets
+```{r model datasets}
+write.csv(tags, "Go_NoGo/tag_ups.csv", row.names = F)
+data <- tags[-c(4,32:36)] # remove outs_on_play and unique identifiers
+set.seed(23); train.rows <- sample(1:nrow(tags), 0.7*nrow(tags)) # 70% train; 30% holdout
+TRAIN <- data[train.rows,]
+HOLDOUT <- data[-train.rows,]
+```
+
+
+Step 3: Model Building Time
+```{r model development}
+# y = runs_on_play
+# Set up how generalization error is to be estimated (5-fold crossvalidation shown here)
+fitControl <- trainControl(method="cv",number=5, classProbs=TRUE, 
+                           summaryFunction=twoClassSummary, allowParallel = TRUE) 
+#The following examples will use AUC as the metric
+
+# vanilla logistic model
+set.seed(23); GLM <- train(runs_on_play~.,data=TRAIN,method='glm',
+                           trControl=fitControl, preProc = c("center", "scale"))
+GLM$results # ROC: 0.9387461 ; SD: 0.009542589  
+postResample(predict(GLM,newdata=HOLDOUT),HOLDOUT$runs_on_play)  # Accuracy: 0.8925200  
+roc(HOLDOUT$runs_on_play,predict(GLM,newdata=HOLDOUT,type="prob")[,2]) # AUC: 0.9465
+
+# regularized logistic regression
+glmnetGrid <- expand.grid(alpha = seq(0,1,.05),lambda = 10^seq(-4,-1,length=10))   
+
+set.seed(23); GLMnet <- train(runs_on_play~.,data=TRAIN,method='glmnet', 
+                              trControl=fitControl, tuneGrid=glmnetGrid,
+                               preProc = c("center", "scale"))
+# GLMnet  # Look at details of all fits
+# Commenting out for clarity of pdf
+plot(GLMnet) # See how error changes with choices
+GLMnet$bestTune # best parameters
+GLMnet$results[rownames(GLMnet$bestTune),]  # ROC: 0.9390544 ; SD: 0.009445003  
+
+varImp(GLMnet)  
+
+postResample(predict(GLMnet,newdata=HOLDOUT),HOLDOUT$runs_on_play)  # Accuracy: 0.8910675    
+roc(HOLDOUT$runs_on_play,predict(GLMnet,newdata=HOLDOUT,type="prob")[,2]) # AUC: 0.9463
+
+#### minimal improvement and considerably longer run time from regularized logistic regression 
+# will drop it from consideration
+
+# vanilla partition (decision tree)
+treeGrid <- expand.grid(cp=10^seq(-5,-1,length=25))
+
+set.seed(23); TREE <- train(runs_on_play~.,data=TRAIN,method='rpart', tuneGrid=treeGrid,
+                          trControl=fitControl, preProc = c("center", "scale"))
+
+TREE  #Look at details of all fits
+plot(TREE) #See how error changes with choices
+TREE$bestTune # best parameters
+TREE$results[rownames(TREE$bestTune),] # ROC: 0.8982874 ; SD: 0.0115885  
+
+varImp(TREE)
+
+postResample(predict(TREE,newdata=HOLDOUT),HOLDOUT$runs_on_play)  # Accuracy: 0.8772694  
+roc(HOLDOUT$runs_on_play,predict(TREE,newdata=HOLDOUT,type="prob")[,2]) # AUC: 0.9223
+
+#### no improvement for the vanilla tree will drop from consideration
+
+# Random Forest
+forestGrid <- expand.grid(mtry=c(1,3,5,11))
+
+# using parallelization
+cluster <- makeCluster(detectCores() - 1) #Line 1 for parallelization
+registerDoParallel(cluster) #Line 2 for parallelization
+set.seed(23); FOREST <- train(runs_on_play~.,data=TRAIN,method='rf',tuneGrid=forestGrid,
+                                        trControl=fitControl, preProc = c("center", "scale"))
+stopCluster(cluster) #Line 3 for parallelization
+registerDoSEQ() #Line 4 for parallelization
+
+FOREST
+plot(FOREST)
+FOREST$bestTune
+FOREST$results[rownames(FOREST$bestTune),] # ROC: 0.945811 ; SD: 0.01194926 
+
+varImp(FOREST)
+
+postResample(predict(FOREST,newdata=HOLDOUT),HOLDOUT$runs_on_play)  # Accuracy: 0.8954248     
+roc(HOLDOUT$runs_on_play,predict(FOREST,newdata=HOLDOUT,type="prob")[,2]) # AUC: 0.9514
+
+#### random forest does well and has a similar run time as the vanilla regression with a small 
+# improvement (it is close but within 1 SD so I cannot say which model is truly better)
+
+# Boosted Tree
+gbmGrid <- expand.grid(n.trees=c(100,200,500),interaction.depth=1:4,
+                       shrinkage=c(.01,.001),n.minobsinnode=c(5,10))
+
+cluster <- makeCluster(detectCores() - 1) #Line 1 for parallelization
+registerDoParallel(cluster) #Line 2 for parallelization
+set.seed(23); GBM <- train(runs_on_play~.,data=TRAIN, method='gbm',tuneGrid=gbmGrid,verbose=FALSE,
+                    trControl=fitControl, preProc = c("center", "scale"))
+stopCluster(cluster) #Line 3 for parallelization
+registerDoSEQ()
+
+# GBM # for clairty of pdf
+plot(GBM)
+GBM$bestTune
+GBM$results[rownames(GBM$bestTune),] # ROC: 0.9470632 ; SD: 0.01116904  
+
+varImp(GBM)
+
+postResample(predict(GBM,newdata=HOLDOUT,n.trees=500),HOLDOUT$runs_on_play)  # Accuracy: 0.8983297 
+roc(HOLDOUT$runs_on_play,predict(GBM,newdata=HOLDOUT,type="prob",n.trees=500)[,2]) # AUC: 0.951
+
+#### Boosted Tree does well and has considerably longer run time but still I have not had 
+# a model separate from any of the others in terms of performance
+```
+
+Step 4: Choosing the best model of those considered
+
+Model Over Fitting Evaluation: 
+  We see Vanilla Logistic Regression, Random Forest, and Boosted Tree all perform very similar and all of the training ROC values are withing 1 standard deviation of the best performing model [0.9358942, 0.9582322]. I want to test if the models overfit the data, where a larger value could point to more over fitting and no gap means under fitting.
+```{r Overfitting Check}
+# checking between models to see if we have any significant overfitting between training and validating
+# (holdout - training)
+
+# Vanilla Regression
+0.9465 - 0.9387461 # 0.0077539
+# Random Forest
+0.9514 - 0.945811 # 0.005589
+# Boosted Tree
+0.951 - 0.9470632 # 0.0039368
+```
+
+None of these models appear to overfit the data. I will use the boosted tree model, since it had the best performance during training and does not appear to overfit the data.
+
+Final Model
+```{r Final Model}
+FINAL <- train(runs_on_play~., data, method = "gbm",
+               tuneGrid = expand.grid(n.trees=500, interaction.depth=4, 
+                                      shrinkage=0.01, n.minobsinnode=5),
+               verbose = FALSE,
+               trControl = trainControl(method = "none"),
+               preProc = c("center", "scale"))
+predictions <- predict(FINAL, HOLDOUT)
+confusionMatrix(predictions, HOLDOUT$runs_on_play)
+
+saveRDS(FINAL, "model.rds") # save model to working directory
+saveRDS(FINAL, "Go_NoGo/model.rds") # save model to shiny app folder
+```
+
+The boosted tree model does extremely well in its predictions, having an accuracy of 91.72%.
+
+```{r model values for grade thresholds}
+probs <- predict(FINAL, type = "prob")
+quantile(probs$run, 0.25) # potential run scoring prob threshold for red/yellow
+quantile(probs$run, 0.75) # potential run scoring prob threshold for yellow/green
+summary(probs$run); sd(probs$run) # information to make 20/80 scale for tools grade
+```
+
+******
+## Goal 2 Additional Code for UI
+******
+
+A user guide to the UI is provided:
+*Once the app has been launched, on the Red Rover tab the user will provide inputs for the provided dropdown menus and numeric/slider inputs. The defaults are already selected. After the desired inputs have been selected the user will hit the "update" button and will see a loading icon and the output of the model predicting a Go or No Go situation.
+*On the second tab (Stop Light), the user will be able to select the desired outfielder based on their ID. Once selected the the UI will update to show a plot of all the fly balls fielded by that outfielder with a color designation based on a run scoring or not overlaid on Kauffmann Stadium. The user also sees a text output reporting the stop light tier (explained in more detail below) and 20/80 scale grade (also in detail below) for the chosen outfielder.
+
+The remaining code in this section is used in support of the UI.
+
+```{r plot flyball instances}
+batted_ball_result <- tags[,c("outs_on_play","runs_on_play","landing_location_x",
+                              "landing_location_y","runner_id","fielder_id")]
+fig <- batted_ball_result %>%
+        ggplot(aes(x=landing_location_x, y=landing_location_y, color=runs_on_play)) +
+        geom_spraychart(stadium_ids = "royals",
+                        stadium_transform_coords = TRUE,
+                        stadium_segments = "all") +
+        theme_void() +
+        coord_fixed()
+fig
+```
+
+
+```{r linear models for ball flight information}
+landing_model_x <- lm(landing_location_x ~ launch_direction + launch_speed + launch_angle, data=data)
+landing_model_y <- lm(landing_location_y ~ (launch_direction + launch_speed + launch_angle)^2, data=data)
+# summary(landing_model_x)
+# summary(landing_model_y)
+p <- predict(landing_model_x, HOLDOUT)
+p2 <- predict(landing_model_y, HOLDOUT)
+plot(y=HOLDOUT$landing_location_x, x=p); abline(0,1) # looks good to control for user inputs
+sqrt(mean((p-HOLDOUT$landing_location_x)^2)) # RMSE: 38.34
+saveRDS(landing_model_x, "landing_x.rds")
+saveRDS(landing_model_x, "Go_NoGo/landing_x.rds")
+
+plot(y=HOLDOUT$landing_location_y, x=p2); abline(0,1) # does a decent job to control for user inputs
+sqrt(mean((p2-HOLDOUT$landing_location_y)^2)) # RMSE: 39.37
+saveRDS(landing_model_y, "landing_y.rds")
+saveRDS(landing_model_y, "Go_NoGo/landing_y.rds")
+
+throw_dist_model <- lm(throw_dist ~ (landing_location_x + landing_location_y)^2, data=data)
+p3 <- predict(throw_dist_model, HOLDOUT)
+plot(y=HOLDOUT$throw_dist, x=p3); abline(0,1)
+# summary(throw_dist_model) 
+# not a perfect model by any means but should be sufficient for this UI currently
+saveRDS(throw_dist_model, "Go_NoGo/throw_dist.rds")
+
+time_to_catch_model <- lm(time_to_catch ~ launch_direction + launch_speed + launch_angle, data=data)
+# summary(time_to_catch_model)
+saveRDS(time_to_catch_model, "Go_NoGo/time_to_catch.rds")
+
+ball_vx_model <- lm(ball_vx_0 ~ launch_direction + launch_speed + launch_angle, data=data)
+# summary(ball_vx_model)
+saveRDS(ball_vx_model, "Go_NoGo/ball_vx.rds")
+
+ball_vy_model <- lm(ball_vy_0 ~ launch_direction + launch_speed + launch_angle, data=data)
+# summary(ball_vy_model)
+saveRDS(ball_vy_model, "Go_NoGo/ball_vy.rds")
+
+ball_vz_model <- lm(ball_vz_0 ~ launch_direction + launch_speed + launch_angle, data=data)
+# summary(ball_vz_model)
+saveRDS(ball_vz_model, "Go_NoGo/ball_vz.rds")
+
+ball_v_model <- lm(ball_v_0 ~ launch_direction + launch_speed + launch_angle, data=data)
+# summary(ball_v_model)
+saveRDS(ball_v_model, "Go_NoGo/ball_v.rds")
+
+ball_ax_model <- lm(ball_ax_0 ~ launch_direction + launch_speed + launch_angle, data=data)
+# summary(ball_ax_model)
+saveRDS(ball_ax_model, "Go_NoGo/ball_ax.rds")
+
+ball_ay_model <- lm(ball_ay_0 ~ launch_direction + launch_speed + launch_angle, data=data)
+# summary(ball_ay_model)
+saveRDS(ball_ay_model, "Go_NoGo/ball_ay.rds")
+
+ball_az_model <- lm(ball_az_0 ~ launch_direction + launch_speed + launch_angle, data=data)
+# summary(ball_az_model)
+saveRDS(ball_az_model, "Go_NoGo/ball_az.rds")
+
+ball_apex_x_model <- lm(ball_apex_x ~ launch_direction + launch_speed + launch_angle, data=data)
+# summary(ball_apex_x_model)
+saveRDS(ball_apex_x_model, "Go_NoGo/ball_apex_x.rds")
+
+ball_apex_y_model <- lm(ball_apex_y ~ launch_direction + launch_speed + launch_angle, data=data)
+# summary(ball_apex_y_model)
+saveRDS(ball_apex_y_model, "Go_NoGo/ball_apex_y.rds")
+
+ball_apex_z_model <- lm(ball_apex_z ~ launch_direction + launch_speed + launch_angle, data=data)
+# summary(ball_apex_z_model)
+saveRDS(ball_apex_z_model, "Go_NoGo/ball_apex_z.rds")
+```
+
+******
+## Goal 3 Code/Process (Also used in UI)
+******
+
+```{r grading scale}
+probs <- predict(FINAL, type="prob")
+preds <- predict(FINAL,tags)
+grades <- cbind(tags, preds)
+grades$correct <-  ifelse(grades$runs_on_play == grades$preds, "C", "NC")
+grades$allowT <- ifelse(grades$runs_on_play=="run",1,0)
+grades$allowP <- ifelse(grades$preds=="run",1,0)
+fielderT <- aggregate(allowT~fielder_id, data=grades, FUN=mean)
+fielderP <- aggregate(allowP~fielder_id, data=grades, FUN=mean)
+
+red_yellow <- quantile(probs$run, 0.25)
+yellow_green <- quantile(probs$run, 0.75)
+
+fielders <- merge(fielderT,fielderP, by="fielder_id")
+fielders$grade <- ifelse(fielders$allowT < red_yellow, "red", ifelse(fielders$allowT > yellow_green, "green", "yellow"))
+
+average_run <- mean(probs$run)
+sd_run <- sd(probs$run)
+
+fielders$scale<-ifelse(fielders$allowT >= average_run+3*sd_run, "20",
+                       ifelse(fielders$allowT >= average_run+2.5*sd_run, "25",
+                              ifelse(fielders$allowT >= average_run+2*sd_run, "30",
+                                     ifelse(fielders$allowT >= average_run+1.5*sd_run,"35",
+                                            ifelse(fielders$allowT >= average_run+1*sd_run, "40",
+                                                   ifelse(fielders$allowT >= average_run+0.5*sd_run,"45",
+                                                          ifelse(fielders$allowT >= average_run, "50",
+                                                                 ifelse(fielders$allowT >= average_run-0.5*sd_run, "55",
+                                                                        ifelse(fielders$allowT >= average_run-1*sd_run, "60",
+                                                                               ifelse(fielders$allowT >= average_run-1.5*sd_run, "65",
+                                                                                      ifelse(fielders$allowT >= average_run-2*sd_run, "70",
+                                                                                             ifelse(fielders$allowT >= average_run-2.5*sd_run,"75","80"
+                                                                                             ))))))))))))
+
+table(fielders$grade)
+table(fielders$scale)
+```
+
+Utilizing the 25th percentile for allowing runners to score for the threshold of red to yellow and 75th percentile for the threshold of yellow to green, I was able to generate three levels to evaluate outfielders in this dataset. The three levels are similar to a stoplight and would be used to help our coaching staff and runners to make decisions in games. The resulting thresholds grouped 169 outfielders as green (should send runners), 244 as yellow, and 90 as red (difficult to send in most situations).
+
+Also, using the mean and standard deviation for the probability of a run scoring I was able to grade the outfielders in this dataset on the typical 20/80 scouting scale. The scale allows us to see where the outfielders in this dataset would fall if we scouted their ability to prevent runners from scoring. Since the probability of a run scoring is not perfectly normal the approach above could be refined more in the future.
