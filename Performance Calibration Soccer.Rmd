@@ -1,0 +1,257 @@
+---
+title: "Soccer Performance"
+author: "Kenny Miller"
+date: "2/12/2021"
+output: word_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/MSBA/UT AD Work")
+library(dplyr)
+library(lubridate)
+library(openxlsx)
+library(readxl)
+library(janitor)
+```
+
+Want to start with loading in the data and add in the game schedule so we know when games happen vs practice
+
+```{r 2020 fall_spring Data Load In}
+Soccer_Fall <- read.csv("data dump whole.csv")
+# spring21 <- read.csv("2021_Soccer/data dump whole.csv")
+head(Soccer_Fall)
+# head(spring21)
+# compare_df_cols(Soccer_Fall,spring21,return = "mismatch")
+# spring21$Acceleration.Density.Index <- as.numeric(spring21$Acceleration.Density.Index)
+# compare_df_cols(Soccer_Fall,spring21,return = "mismatch")
+
+soccer2020 <- Soccer_Fall #bind_rows(Soccer_Fall,spring21)
+summary(soccer2020)
+
+SCHEDULE <- read.csv("Soccer_Schedule_2020 Update.txt", sep=",")
+# whoop_spring21 <- read.xlsx("2021_Soccer/Whoop trial.xlsx")
+# whoop_spring21$Date <- as.Date(whoop_spring21$Date, origin = "1899-12-30")
+
+RPE <- readxl::read_xlsx("Practice RPE trial.xlsx")
+# RPE_spring21 <- readxl::read_xlsx("2021_Soccer/Practice RPE trial.xlsx")
+# RPE <- bind_rows(RPE_fall20,RPE_spring21)
+RPE$Date <- ymd(RPE$Date)
+names(RPE)[1] <- "Player.Name"
+names(RPE)[3:5] <- c("Practice.RPE", "Practice.Performance", "Practice.Duration")
+
+# dates in data
+table(soccer2020$Date)
+table(SCHEDULE$Date)
+SCHEDULE$Date
+games <- c("9/19/2020","9/27/2020","10/2/2020","10/9/2020","10/18/2020","10/23/2020","10/30/2020","11/6/2020","11/17/2020","2/14/2021","2/20/2021","2/28/2021","3/6/2021","3/21/2021","3/27/2021")
+SCHEDULE$Date <- games
+# SCHEDULE$Date
+class(soccer2020$Date)
+
+soccer2020$Game <- rep(0,nrow(soccer2020))
+for(i in 1:nrow(soccer2020)) {
+  if(soccer2020$Date[i] %in% games) { soccer2020$Game[i] <- 1 }
+}
+summary(soccer2020$Game)
+soccer2020$Date <- mdy(soccer2020$Date)
+```
+
+# ```{r fall 2021 data load in}
+# fall21 <- readxl::read_xlsx("2021_Soccer/Catapult Total Session Fall 2021.xlsx")
+# RPE_fall21 <- readxl::read_xlsx("2021_Soccer/Practice RPE 2021-22.xlsx")
+# whoop_fall21 <- readxl::read_xlsx("2021_Soccer/Whoop 2021-2022.xlsx")
+# 
+# ```
+# 
+
+```{r add in schedule results}
+names(Soccer_Fall)[1] <- "Player.Name"
+
+SCHEDULE$W_L <- rep(0,nrow(SCHEDULE))
+for (i in 1:nrow(SCHEDULE)) {
+  SCHEDULE$W_L[i] <- unlist(strsplit(SCHEDULE$Result[i]," "))[1]
+}
+Soccer_Fall$Result <- rep(0,nrow(Soccer_Fall))
+# if(DATA$Date[943] %in% games) { DATA$Result[943] <- SCHEDULE$W_L[which(SCHEDULE$Date == DATA$Date[943])] }
+for (i in 1:nrow(Soccer_Fall)) {
+  if(Soccer_Fall$Date[i] %in% games) { Soccer_Fall$Result[i] <- SCHEDULE$W_L[which(SCHEDULE$Date == Soccer_Fall$Date[i])] } else { Soccer_Fall$Result[i] <- "Practice" }
+}
+
+
+# potential efficiency metric using Max HR compared to the 
+head(Soccer_Fall$Maximum.Heart.Rate)
+
+aggregate(Maximum.Heart.Rate ~ Player.Name, data = Soccer_Fall, FUN = max)
+summary(Soccer_Fall$Heart.Rate.Exertion.Per.Minute)
+```
+
+
+Bind RPE values to Entire Dataframe
+
+```{r Bind RPE and Soccer_Fall}
+Soccer_Fall$Date <- mdy(Soccer_Fall$Date)
+summary(RPE$Practice.Duration)
+RPE$Practice.Duration <- NULL
+RPE[which(RPE$Player.Name == y),]
+1343 - sum(complete.cases(RPE))
+summary(RPE$Practice.RPE); summary(RPE$Practice.Performance) # may need to replace NAs with median by athlete after creating performance metric
+
+Soccer_Fall <- merge(Soccer_Fall, RPE, by = c("Player.Name", "Date"), all.x = T)
+Soccer_Fall
+```
+
+
+Data Cleaning:
+*going to focus on using data within two standard deviations of the mean to remove poorly calibrated data points*
+
+Create Performance Metric Components with PCA (use adjusted data:
+
+```{r Performance Metric}
+# Creating performance metric with Principal Components Analysis
+# use subset of only the values we want to see in the data
+#Soccer.Original <- Soccer_Fall
+colnames(Soccer_Fall)
+# adjust player load, total distance for a per session per minute basis
+# Soccer_Fall$Player.Load.Per.Minute
+Soccer_Fall$PL_Minute <- Soccer_Fall$Total.Player.Load/Soccer_Fall$Total.Duration
+Soccer_Fall$Dist_Minute <- Soccer_Fall$Total.Distance..m./Soccer_Fall$Total.Duration # layout looks a little skewed but seems like an accurate measure
+Soccer_Fall$Explosive.Efforts <- log(Soccer_Fall$Explosive.Efforts + 1)
+Soccer_Fall$X..of.efforts..90. <- log(Soccer_Fall$X..of.efforts..90. + 1)
+
+# need to check on indoor/outdoor metrics with Johnny 3/19/2021
+sum(Soccer_Fall$Total.Distance..m. == 0)
+
+# subsetting rows to remove outliers on both high and low side by including data that is within 2 standard deviations of the mean as well as the NA values of RPE measures
+Soccer <- tibble(Soccer_Fall)
+Soccer <- Soccer %>%
+  filter(is.na(Practice.RPE) == F) %>%
+  filter(is.na(Practice.Performance) == F) %>%
+  filter(HRZone.Trimp >= 8.486448 & HRZone.Trimp <= 98.627159) %>%
+  filter(PL_Minute >= 1.599316 & PL_Minute <= 11.465696) %>%
+  filter(Explosive.Efforts > 0)
+
+# we want to focus on Max Velocity (7), Player Load/Minute (65), Heart Rate zone.trimp (Johnny created; weighted factor for the girls based on duration and time spent in zones) (8), Distance/Minute (66), [HR exertion/minute (53); removing for new testing]
+# number of 90% efforts(19) [not a great hist, will attempt to use it as it is (lets take the log +1)], explosive efforts (22) [take log of table for almost perfect normal distribution], meta energy (23) [add to pca and performance energy]
+Perf <- Soccer[,c(7,8,19,22,23,63,64,65,66)]
+Perf.Scaled <- as.data.frame(scale(Perf))
+
+#?princomp
+plot(Perf.Scaled, pch=20, cex=0.05)
+PCA <- princomp(Perf.Scaled)
+PCA.2 <- prcomp(Perf, scale. = T)
+PCA.2$rotation[,1:5]
+PCA$loadings
+NEW_Perf <- PCA$scores
+summary(PCA); summary(PCA.2) # 5 components 89%, 6 components explains 94%
+boxplot(NEW_Perf)
+new.coordinates <- PCA$scores[,1]
+hist(new.coordinates)
+plot(new.coordinates,xlab="1st Principal Component",ylab="2nd Principal Component")
+screeplot(PCA)
+
+# check PCA Plots 
+library( pca3d )
+pca2d( PCA.2, biplot= TRUE, shape= 19, col= "black"  )
+pca2d( PCA$scores, biplot= PCA$loadings[,], shape= 19, col= "black" )
+```
+
+
+Creating Performance Metric (using full data):
+
+```{r}
+library(scales)
+library(zoo)
+library(imputeTS)
+library(lubridate)
+
+# building weighted sum of the first 6 components to explain 91% of the variation
+PCA$loadings; summary(PCA)
+
+# removing HR exertion from PCA
+# able to explain 94% of the variation
+Soccer_Fall$Performance <- 0
+for (i in 1:nrow(Soccer_Fall)) {
+  Soccer_Fall$Performance[i] <- sum( 0.181*Soccer_Fall$Maximum.Velocity..km.h.[i], 0.244*Soccer_Fall$HRZone.Trimp[i], 0.116*Soccer_Fall$X..of.efforts..90.[i], 0.197*Soccer_Fall$Explosive.Efforts[i], 0.494*Soccer_Fall$Meta.Energy..KJ.kg.[i],  0.416*Soccer_Fall$Practice.RPE[i], 0.467*Soccer_Fall$PL_Minute[i], 0.468*Soccer_Fall$Dist_Minute[i], 0.670*Soccer_Fall$Maximum.Velocity..km.h.[i], 0.671*Soccer_Fall$X..of.efforts..90.[i], -0.155*Soccer_Fall$Explosive.Efforts[i],  -0.134*Soccer_Fall$Practice.RPE[i], -0.198*Soccer_Fall$Practice.Performance[i], 0.552*Soccer_Fall$HRZone.Trimp[i], 0.180*Soccer_Fall$X..of.efforts..90.[i], 0.558*Soccer_Fall$Explosive.Efforts[i], 0.285*Soccer_Fall$Practice.Performance[i],-0.342*Soccer_Fall$PL_Minute[i], -0.376*Soccer_Fall$Dist_Minute[i], -0.284*Soccer_Fall$HRZone.Trimp[i], 0.180*Soccer_Fall$Explosive.Efforts[i], -0.123*Soccer_Fall$Meta.Energy..KJ.kg.[i],  0.915*Soccer_Fall$Practice.Performance[i], 0.132*Soccer_Fall$PL_Minute[i], 0.629*Soccer_Fall$HRZone.Trimp[i], -0.109*Soccer_Fall$X..of.efforts..90.[i], -0.730*Soccer_Fall$Explosive.Efforts[i], 0.123*Soccer_Fall$Meta.Energy..KJ.kg.[i], -0.108*Soccer_Fall$Practice.RPE[i], 0.167*Soccer_Fall$Practice.Performance[i], 0.181*Soccer_Fall$Maximum.Velocity..km.h.[i], -0.231*Soccer_Fall$X..of.efforts..90.[i], 0.230*Soccer_Fall$Explosive.Efforts[i], 0.262*Soccer_Fall$Meta.Energy..KJ.kg.[i],  -0.852*Soccer_Fall$Practice.RPE[i], 0.152*Soccer_Fall$PL_Minute[i], 0.206*Soccer_Fall$Dist_Minute[i] )
+}
+summary(Soccer_Fall$Performance)
+Soccer_Fall$Player.Name <- as.factor(Soccer_Fall$Player.Name)
+players <- levels(Soccer_Fall$Player.Name)
+P <- data.frame()
+# median replacement for the NA values
+for(i in 1:24) {
+  athlete <- players[i]
+  a <- subset(Soccer_Fall, Player.Name == athlete)
+  for(j in 1:nrow(a)) {
+      if( nrow(a) > 1 ) { if( is.na(a$Performance[j]) == T ) { a$Performance[j] <- median(a$Performance, na.rm = T) } } else { a$Performance <- 114.499 }
+  }
+  P <- rbind(P, a)
+}
+summary(Soccer_Fall$Performance)
+summary(P$Performance)
+Soccer_Fall <- P
+# Soccer_Fall[which(is.na(Soccer_Fall$Performance) == T),c(1,7,8,19,22,23,53,64,65)]
+hist(Soccer_Fall$Performance)
+# aggregate(Performance ~ Player.Name, data = Soccer_Fall, FUN = min)
+Soccer_Fall$Player.Name <- as.factor(Soccer_Fall$Player.Name)
+players <- levels(Soccer_Fall$Player.Name)
+Soccer_Scaled <- data.frame()
+
+# we can ignore the errors provided 
+for(i in 1:24) {
+  athlete <- players[i]
+  a <- subset(Soccer_Fall, Player.Name == athlete)
+  a$Performance_Scaled <- rescale(a$Performance, to = c(0,100))
+  a$Rolling_Average <- rollmean(a$Performance_Scaled, 10, na.pad = T, align = "right")
+  if(nrow(a) > 1) { a$Rolling_Average[is.na (a$Rolling_Average)] <- na_ma(a$Rolling_Average) } else { a$Rolling_Average <- mean(a$Performance_Scaled) }
+  Soccer_Scaled <- rbind(Soccer_Scaled, a)
+}
+Soccer_Scaled
+sum(is.na(Soccer_Scaled$Rolling_Average))
+summary(Soccer_Scaled$Performance_Scaled)
+summary(Soccer_Scaled$Rolling_Average)
+
+dates <- unique(Soccer_Scaled$Date)
+day_scaled <- data.frame()
+
+for(i in 1:length(dates)) {
+  d <- dates[i]
+  w <- subset(Soccer_Scaled, Date == d)
+  w$Scaled_Day <- rescale(w$Performance_Scaled, to = c(min(w$Performance_Scaled), 100))
+  day_scaled <- rbind(day_scaled, w)
+}
+nrow(day_scaled)
+Soccer_Scaled$Day_Scaled <- day_scaled$Scaled_Day
+summary(Soccer_Scaled$Day_Scaled)
+
+class(Soccer_Scaled$Date)
+# Soccer_Scaled$Date <- as.character(Soccer_Scaled$Date)
+openxlsx::write.xlsx(Soccer_Scaled, "Fall_Soccer_Scaled.csv", row.names = F, overwrite = TRUE)
+```
+
+
+```{r making graph}
+library(dygraphs)
+library(xts)          # To make the conversion data-frame / xts format
+library(tidyverse)
+library(lubridate)
+
+
+sub <- subset(Soccer_Scaled, Player.Name == x)
+don <- xts(x = sub$Performance_Scaled, order.by = sub$Date)
+don['20200911/202011'] # example of how to subset by date
+p <- dygraph(don) %>%
+  dyOptions(labelsUTC = TRUE, fillGraph=TRUE, fillAlpha=0.1, drawGrid = FALSE, colors="#D8AE5A") %>%
+  dyRangeSelector() %>%
+  dyCrosshair(direction = "vertical") %>%
+  dyHighlight(highlightCircleSize = 5, highlightSeriesBackgroundAlpha = 0.2, hideOnMouseOut = FALSE)  %>%
+  dyRoller(rollPeriod = 1)
+p
+```
+
+
+
+
+
