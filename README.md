@@ -6,7 +6,7 @@ This repo showcases project code for projects I have worked on independently.
 **The Folders of this repo contain the following:**
 
 ### Melton Scholars
- * Contains two example files of code utilized in the analysis and cleaning of my Senior undergraduate research project.
+ * Contains two example files of code utilized in the analysis and cleaning of my Senior research project.
  * The files showcase my work and utilization of various functions to answer various questions posed by the stakeholders. 
  * These files allowed us to answer important factors that drive fan decision making when purchasing tickets as well as estimating importance of the variables to driving final price differences in the resale market vs the primary market
 
