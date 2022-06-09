@@ -1,6 +1,8 @@
 ## Coding Examples
 This repo showcases project code for projects I have worked on independently.
 
+[Additional Writeups and Work Sample](https://www.dropbox.com/scl/fo/0dzr7svgl9g95tp9y3yz8/h?dl=0&rlkey=vhlo2ansgfvo4xm17o1458mo0)
+
 *All of the code in this repository is proprietary and not to be shared without written consent by the repo owner and code writer*
 
 **The Folders of this repo contain the following:**
